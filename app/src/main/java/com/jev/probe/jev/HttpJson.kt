@@ -115,7 +115,7 @@ object HttpJson {
      * Bearer credentials and chat content must not travel over cleartext HTTP.
      * The only exception is loopback development on the same device/emulator.
      */
-    private fun validateEndpoint(url: String, route: String) {
+    internal fun validateEndpoint(url: String, route: String) {
         val uri = try {
             URI(url.trim())
         } catch (_: Exception) {

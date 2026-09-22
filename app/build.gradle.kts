@@ -16,12 +16,12 @@ val releaseProps = Properties().apply {
 
 android {
     namespace = "com.jev.probe"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.jev.probe"
         minSdk = 30
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 4
         versionName = "1.3"
 

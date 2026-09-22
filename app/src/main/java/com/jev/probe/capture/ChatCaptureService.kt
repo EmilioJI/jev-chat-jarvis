@@ -735,14 +735,10 @@ open class ChatCaptureService : AccessibilityService() {
      * the other person and the panel says so.
      */
     private fun ocrCaptureManual() {
-        val root = rootInActiveWindow
-        val pkg = if (cloneUserMode) WECHAT_PKG
-            else root?.packageName?.toString() ?: foregroundPkg ?: activePkg ?: ""
-        // Top bar text, if this app has one we can read; else the first OCR line.
-        val title = root?.let {
-            findTitleInActionBar(it, Int.MAX_VALUE, resources.displayMetrics.widthPixels, resources, 0.15, 0.85)
-        }
-        ocrCapture(title, emptyList(), pkg, manual = true, autoEligible = false)
+        // Manual OCR deliberately avoids rootInActiveWindow and title nodes.
+        // The whole visible display is captured only after the user taps.
+        val pkg = if (cloneUserMode) WECHAT_PKG else ""
+        ocrCapture(null, emptyList(), pkg, manual = true, autoEligible = false)
     }
 
     /**
@@ -776,7 +772,9 @@ open class ChatCaptureService : AccessibilityService() {
     ) {
         if (ocrBusy) return
         ocrBusy = true
-        screenCapture.capture { res ->
+        val captureFn: (((ScreenCapture.Result) -> Unit) -> Unit) =
+            if (manual) screenCapture::captureDisplay else screenCapture::capture
+        captureFn { res ->
             when (res) {
                 is ScreenCapture.Result.Failed -> {
                     ocrBusy = false

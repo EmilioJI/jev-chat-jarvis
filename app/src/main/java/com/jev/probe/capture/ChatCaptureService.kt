@@ -15,6 +15,7 @@ import com.jev.probe.capture.ocr.ScreenCapture
 import com.jev.probe.capture.ocr.VisionDialogParser
 import com.jev.probe.core.BubbleRect
 import com.jev.probe.core.ChatSnapshot
+import com.jev.probe.core.DiagnosticsStore
 import com.jev.probe.core.Msg
 import com.jev.probe.core.Prefs
 import com.jev.probe.core.RankedReply
@@ -200,6 +201,18 @@ open class ChatCaptureService : AccessibilityService() {
                     fg.contains("launcher", ignoreCase = true) ||
                     fg == "com.miui.home" ||
                     fg == "com.android.systemui"
+                if (!drop) {
+                    DiagnosticsStore.record(
+                        this,
+                        packageName = fg,
+                        adapter = "未适配",
+                        source = "unknown_app",
+                        titlePresent = false,
+                        messageCount = 0,
+                        latestFrom = null,
+                        status = "idle"
+                    )
+                }
                 main.post { if (drop) overlay?.hide() else overlay?.showIdle(null) }
                 return
             }
@@ -226,6 +239,16 @@ open class ChatCaptureService : AccessibilityService() {
         // Stabilize the title BEFORE anything below reads it: some apps (X) show
         // a transient "连接中…" title for a moment right after opening a thread.
         val snapshot = stabilizeTitle(pkg ?: "", rawSnapshot)
+        DiagnosticsStore.record(
+            this,
+            packageName = pkg ?: "",
+            adapter = adapterLabel(pkg ?: ""),
+            source = if (snapshot.messages.isEmpty()) "tree_empty" else "tree",
+            titlePresent = !isTransientTitle(snapshot.title),
+            messageCount = snapshot.messages.size,
+            latestFrom = snapshot.latestFrom,
+            status = if (snapshot.messages.isEmpty()) "tree_empty" else "ok"
+        )
         if (!prefs.isAllowed(snapshot.title)) { main.post { overlay?.hide() }; return }
         // In a chat window but the tree holds no text (Feishu draws its bodies,
         // WeChat hides them when the disguise fails) → screenshot + OCR, subject
@@ -292,6 +315,14 @@ open class ChatCaptureService : AccessibilityService() {
     /** A placeholder title an app shows only for a moment (e.g. X's "连接中…"
      *  right after opening a DM thread) — never a real conversation title.
      *  Blank/null counts too, so a caller can always fall back the same way. */
+    private fun adapterLabel(pkg: String): String = when (pkg) {
+        "com.tencent.mm" -> "WeChat"
+        "com.tencent.mobileqq" -> "QQ"
+        "com.ss.android.lark" -> "Feishu"
+        "com.twitter.android" -> "X"
+        else -> if (pkg.isBlank()) "未知" else "未适配"
+    }
+
     private fun isTransientTitle(t: String?): Boolean {
         val trimmed = t?.trim()?.removeSuffix("…")?.removeSuffix("...")?.trim()
         if (trimmed.isNullOrEmpty()) return true
@@ -532,6 +563,16 @@ open class ChatCaptureService : AccessibilityService() {
             when (res) {
                 is ScreenCapture.Result.Failed -> {
                     ocrBusy = false
+                    DiagnosticsStore.record(
+                        this,
+                        packageName = pkg,
+                        adapter = adapterLabel(pkg),
+                        source = "screenshot_failed",
+                        titlePresent = !isTransientTitle(treeTitle),
+                        messageCount = 0,
+                        latestFrom = null,
+                        status = "screenshot_error:${res.code}"
+                    )
                     Log.i(TAG, "ocr: screenshot failed code=${res.code}")
                     // Nothing was read, so the signature must not claim this screen
                     // is done — the next event may retry, still held back by
@@ -860,7 +901,17 @@ open class ChatCaptureService : AccessibilityService() {
         autoEligible: Boolean
     ) {
         ocrBusy = false
-        // Counts only — OCR'd chat text never goes to logcat.
+        // Counts only — OCR'd chat text never goes to logcat or diagnostics.
+        DiagnosticsStore.record(
+            this,
+            packageName = pkg,
+            adapter = adapterLabel(pkg),
+            source = if (snapshot.note == VISION_OCR_NOTE) "ocr_vision" else "ocr_local",
+            titlePresent = !isTransientTitle(snapshot.title),
+            messageCount = snapshot.messages.size,
+            latestFrom = snapshot.latestFrom,
+            status = if (snapshot.messages.isEmpty()) "empty" else "ok"
+        )
         Log.i(TAG, "ocr[$pkg] msgs=${snapshot.messages.size} manual=$manual")
         if (snapshot.messages.isEmpty()) {
             if (manual) overlay?.showError("这一屏没认出文字")

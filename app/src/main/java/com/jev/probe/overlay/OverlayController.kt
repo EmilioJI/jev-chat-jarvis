@@ -254,7 +254,14 @@ class OverlayController(private val ctx: Context) {
                     if (longFired) { true }
                     else if (moved) {
                         prefs.bubbleX = params.x; prefs.bubbleY = params.y; true  // stays where dropped
-                    } else { toggle(); true }
+                    } else {
+                        if (expanded) toggle()
+                        else {
+                            showSafeEntryMenu()
+                            toggle()
+                        }
+                        true
+                    }
                 }
                 MotionEvent.ACTION_CANCEL -> { v.removeCallbacks(longPress); true }
                 else -> false
@@ -315,6 +322,28 @@ class OverlayController(private val ctx: Context) {
     }
 
     // ------------------------------------------------------------ public API
+
+    /**
+     * Re-opening the bubble never implies that the previous analysis belongs to
+     * the app/conversation now on screen. This matters especially for WeChat,
+     * which formal mode intentionally does not subscribe to via Accessibility.
+     */
+    private fun showSafeEntryMenu() {
+        ensureRoot()
+        val previous = lastJudgment
+        val views = ArrayList<View>()
+        views.add(line("主动分析", "#5C6560", 12f, true))
+        views.add(bigButton("分析剪贴板") { onAnalyzeClipboard?.invoke() })
+        views.add(secondaryButton("分析当前可读页面") { onManualAnalyze?.invoke() })
+        views.add(secondaryButton("本地截屏识别（可选，无需图像 Key）") { onOcrCapture?.invoke() })
+        if (previous != null) {
+            views.add(secondaryButton("查看上次分析结果") {
+                noteText = "上次分析结果 · 切换会话后请勿直接沿用"
+                render(previous, generating = previous.rankedReplies.isEmpty())
+            })
+        }
+        setContent(views)
+    }
 
     /**
      * Safe compatibility mode for a window whose accessibility tree is not

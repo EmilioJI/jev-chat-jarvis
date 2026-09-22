@@ -30,7 +30,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var container: LinearLayout
 
     private val a11yComponent: String
-        get() = "$packageName/com.google.android.accessibility.selecttospeak.SelectToSpeakService"
+        get() = "$packageName/com.jev.probe.capture.ChatCaptureService"
 
     private fun dp(v: Int) = Guofeng.dp(this, v)
 
@@ -74,7 +74,7 @@ class MainActivity : AppCompatActivity() {
         container.addView(permissionCard(
             mark = "读",
             title = "无障碍权限",
-            desc = "读取当前可见聊天内容；开启前会单独说明数据访问与用途",
+            desc = "用于你主动分析当前可见内容；微信默认不在后台持续读取",
             granted = a11y
         ) {
             showAccessibilityDisclosure()
@@ -479,17 +479,16 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(20), dp(8), dp(20), dp(8))
 
             addView(text(
-                "小书童·知言需要无障碍访问，才能在微信、QQ、X、飞书等聊天界面中读取当前屏幕上你本来就能看到的聊天内容。",
+                "小书童·知言使用标准 Android 无障碍能力，主要用于你主动发起的当前页面分析和可选的本地截屏识别。",
                 14f,
                 Guofeng.INK,
                 bold = true
             ))
             addView(text(
-                "开启后，服务可能访问：\n" +
-                    "• 当前活动应用和窗口中的可见文字、控件结构与会话标题；\n" +
-                    "• 在控件树读不到正文时，按你的 OCR 设置截取当前聊天窗口。默认 ML Kit OCR 完全在本机；只有你明确选择“视觉 API”后，才会把裁剪后的聊天区域发送到你配置的视觉服务商。\n\n" +
-                    "用途：这些内容只用于识别当前对话、生成意图判断和候选回复，并在你主动开启关联上下文时写入本机历史。分析时，聊天文本会发送给你在设置中选择的判断/回复模型服务商。\n\n" +
-                    "小书童·知言不会读取聊天数据库，不会自动点击发送；候选回复即使填入输入框，也仍由你检查并手动发送。你可以随时在系统无障碍设置中关闭此权限。",
+                "开启后，服务具备访问当前活动窗口中可见文字、控件结构和会话标题的能力，也具备系统截屏能力。\n\n" +
+                    "微信默认采用主动模式：不会因为收到消息就在后台持续读取聊天树；只有你点击悬浮球发起分析时，才会尝试读取当前可见内容。你也可以主动选择本地 ML Kit 截屏识别，本地 OCR 不需要图像 API Key，也不会上传截图。只有你以后明确选择“视觉 API”时，才会把裁剪后的聊天区域发送到你配置的视觉服务商。\n\n" +
+                    "用途：你主动提交的内容用于生成意图判断和候选回复；只有你另外开启关联上下文时，相关历史才会写入本机。分析文本会发送给你在设置中选择的判断/回复模型服务商。\n\n" +
+                    "小书童·知言不会读取微信数据库，不使用 Hook、Root 或私有协议，不会自动点击发送。微信候选回复默认只复制到剪贴板，由你自行粘贴并发送。你可以随时在系统无障碍设置中关闭此权限。",
                 13f,
                 Guofeng.INK_SOFT
             ).apply { setPadding(0, dp(12), 0, 0) })

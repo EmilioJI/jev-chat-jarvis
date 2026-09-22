@@ -28,22 +28,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify preinstalled toolchain
+      - name: Verify pinned toolchain
         shell: bash
         run: |
           set -euo pipefail
           java -version
-          command -v gradle
-          gradle --version
+          test -f gradle/wrapper/gradle-wrapper.jar
+          test -f gradle/wrapper/gradle-wrapper.properties
+          test -f gradlew
+          bash ./gradlew --version
           test -n "${ANDROID_HOME:-}"
-          test -f "$ANDROID_HOME/platforms/android-35/android.jar"
-          ls "$ANDROID_HOME/build-tools" | grep -E '^35(\.|$)' | head -1
+          test -f "$ANDROID_HOME/platforms/android-36/android.jar"
+          test -x "$ANDROID_HOME/build-tools/35.0.0/aapt"
 
       - name: Build debug APK
         shell: bash
         run: |
           set -euo pipefail
-          gradle :app:assembleDebug --no-daemon --stacktrace
+          bash ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
       - name: Verify APK
         shell: bash
@@ -58,6 +60,8 @@ jobs:
           BADGING="$("$AAPT" dump badging "$APK")"
           printf '%s\n' "$BADGING" | grep -F "package: name='com.jev.probe.guofeng'"
           printf '%s\n' "$BADGING" | grep -F "application-label:'Jev聊天助手·国风验收'"
+          printf '%s\n' "$BADGING" | grep -F "targetSdkVersion:'36'"
+          printf '%s\n' "$BADGING" | grep -F "compileSdkVersion='36'"
 
       - name: Upload acceptance APK
         uses: actions/upload-artifact@v4

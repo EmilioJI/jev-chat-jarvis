@@ -33,7 +33,11 @@ internal class SecureSecretStore(
         val encrypted = prefs.getString(encryptedPref, null)
         if (!encrypted.isNullOrBlank()) {
             try {
-                return decrypt(encrypted)
+                val value = decrypt(encrypted)
+                // A prior phase-2 cleanup may have failed; retry opportunistically.
+                if (prefs.contains(legacyPlainPref))
+                    prefs.edit().remove(legacyPlainPref).commit()
+                return value
             } catch (e: Exception) {
                 Log.w(TAG, "secret decrypt failed: ${e.javaClass.simpleName}")
             }

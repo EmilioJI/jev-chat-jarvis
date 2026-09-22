@@ -157,7 +157,11 @@ class SettingsActivity : AppCompatActivity() {
                 val t0 = System.currentTimeMillis()
                 val demo = ChatSnapshot("连通测试", listOf(
                     Msg("other", "在吗？"), Msg("me", "在")))
-                val a = JevClient(probe).judge(demo, prefs.relationship)
+                val a = try {
+                    JevClient(probe).judge(demo, prefs.relationship)
+                } finally {
+                    clearScratch(SCRATCH_JUDGE)
+                }
                 val ms = System.currentTimeMillis() - t0
                 main.post {
                     judgeResult.text = if (a.error != null) "失败（${ms}ms）：${a.error}"
@@ -220,6 +224,7 @@ class SettingsActivity : AppCompatActivity() {
                 replyModel = model.ifBlank { Prefs.DEFAULT_REPLY_MODEL }
             }
             if (probe.effectiveReplyKey().isBlank()) {
+                clearScratch(SCRATCH_REPLY)
                 replyResult.text = "请填写回复密钥；仅同服务商时可继承判断密钥"
                 return@cardBtn
             }
@@ -229,7 +234,12 @@ class SettingsActivity : AppCompatActivity() {
                 var err: String? = null
                 val out = try {
                     ReplyClient(probe).ping()
-                } catch (e: Exception) { err = e.message; "" }
+                } catch (e: Exception) {
+                    err = e.message
+                    ""
+                } finally {
+                    clearScratch(SCRATCH_REPLY)
+                }
                 val ms = System.currentTimeMillis() - t0
                 main.post {
                     replyResult.text = if (err != null) "失败（${ms}ms）：$err"
@@ -289,6 +299,7 @@ class SettingsActivity : AppCompatActivity() {
                 visionModel = visionModelEdit.text.toString().trim().ifBlank { Prefs.DEFAULT_VISION_MODEL }
             }
             if (probe.effectiveVisionKey().isBlank()) {
+                clearScratch(SCRATCH_VISION)
                 visionResult.text = "请填写视觉密钥；仅同服务商时可继承其它密钥"
                 return@cardBtn
             }
@@ -298,7 +309,12 @@ class SettingsActivity : AppCompatActivity() {
                 var err: String? = null
                 val out = try {
                     VisionClient(probe).ask(whitePixelJpegB64(), "这张图是什么颜色？只回答颜色。")
-                } catch (e: Exception) { err = e.message; "" }
+                } catch (e: Exception) {
+                    err = e.message
+                    ""
+                } finally {
+                    clearScratch(SCRATCH_VISION)
+                }
                 val ms = System.currentTimeMillis() - t0
                 main.post {
                     visionResult.text = if (err != null) "失败（${ms}ms）：$err"
@@ -491,8 +507,12 @@ class SettingsActivity : AppCompatActivity() {
      * touched either way.
      */
     private fun draftPrefs(scratchName: String, fill: Prefs.() -> Unit): Prefs {
-        getSharedPreferences(scratchName, MODE_PRIVATE).edit().clear().commit()
+        clearScratch(scratchName)
         return Prefs(this, scratchName).apply(fill)
+    }
+
+    private fun clearScratch(scratchName: String) {
+        getSharedPreferences(scratchName, MODE_PRIVATE).edit().clear().commit()
     }
 
     /** 1x1 white JPEG for the vision smoke test, via the real encoder path. */

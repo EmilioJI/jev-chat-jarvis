@@ -82,31 +82,51 @@ PASS 条件：行为完全符合上面流程。
 
 PASS 条件：三项均 PASS。
 
-## Gate 3 — 微信 Accessibility A/B（关键 Gate）
+## Gate 3 — 微信 Accessibility A/B（关键 Gate）— COMPLETED
 
-A、B 分别：
+设备：
+- vivo X100 Ultra
+- Android 16
+- 主微信 user 0 / `com.tencent.mm`
 
-1. 开启各自无障碍服务
-2. 打开同一个微信一对一聊天
-3. 保持屏幕停在同一组消息
-4. 回到对应 App → 设置 → 捕获诊断
-5. 记录：
+### A — `isAccessibilityTool=true`
 
-| 字段 | 期望 |
-|---|---|
-| 当前应用 | 微信 |
-| 包名 | `com.tencent.mm` |
-| 适配器 | WeChat |
-| 捕获来源 | 控件树 |
-| 标题节点 | 已读到 |
-| 消息条数 | > 0 |
+服务状态：
+- Enabled = YES
+- Bound = YES
+- event types = WINDOW_STATE_CHANGED / WINDOW_CONTENT_CHANGED / VIEW_SCROLLED
 
-判定：
+同一微信聊天诊断：
+- package = `com.tencent.mm`
+- adapter = `WeChat`
+- source = `tree`
+- message_count = `1`
+- status = `ok`
 
-- A PASS / B PASS → `isAccessibilityTool=false` 未破坏微信捕获，可进入合规迁移下一步
-- A PASS / B FAIL → flag 对当前微信/ROM 存在兼容影响，B 不得合并
-- A FAIL / B FAIL → 不是 flag 问题，需查微信版本/伪装机制/ROM
-- A FAIL / B PASS → 异常结果，复测后再分析
+**A = PASS。**
+
+### B — `isAccessibilityTool=false`
+
+服务状态：
+- Enabled = YES
+- Bound = YES
+- capabilities / event types 正常
+
+控制实验：
+- 普通第三方测试 App 可更新 diagnostics，证明服务本身工作正常
+- 微信不产生新的捕获 diagnostics
+- X 也不产生新的捕获 diagnostics
+
+**B = FAIL。**
+
+该表现与 Android API 34+ `accessibilityDataSensitive` 机制一致：敏感
+AccessibilityEvent / View 可限制为仅向 `isAccessibilityTool=true` 的服务暴露。
+
+结论：
+- PR #16 不合并，已关闭
+- 当前兼容构建继续保留 `isAccessibilityTool=true`
+- Google Play 发布不能把当前架构直接改成 false 后继续宣称微信/X 控件树能力不变
+- Play-safe 版本需要不依赖该 flag 的捕获路径（例如显式用户授权的 screen capture / OCR 模式）
 
 ## Gate 4 — QQ / X / 飞书回归
 

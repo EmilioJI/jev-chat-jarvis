@@ -119,6 +119,8 @@ open class ChatCaptureService : AccessibilityService() {
     private var pendingHistoryHint: HistoryCaptureHint = HistoryCaptureHint.CONSERVATIVE
     @Volatile private var currentSnapshot: ChatSnapshot? = null
     private var foregroundPkg: String? = null
+    /** True after vivo clone resolver until a normal user-0 chat event is seen. */
+    private var cloneUserMode: Boolean = false
 
     // ---- OCR path. Screenshot and local ML Kit callbacks return on the main
     // thread; remote Vision OCR explicitly moves JPEG encoding + network I/O to
@@ -139,14 +141,7 @@ open class ChatCaptureService : AccessibilityService() {
         super.onServiceConnected()
         prefs = Prefs(this)
         overlay = OverlayController(this)
-        overlay?.onManualAnalyze = {
-            currentSnapshot?.let {
-                invalidateAnalysis()
-                pendingSnapshot = it
-                pendingHistoryHint = HistoryCaptureHint.CONSERVATIVE
-                runAnalysis()
-            }
-        }
+        overlay?.onManualAnalyze = { manualAnalyzeCurrentWindow() }
         // Bubble menu: file the open conversation as a knowledge-base contact.
         // Contacts are never created automatically — this is the one-tap way in.
         overlay?.onSaveContact = {
@@ -165,6 +160,8 @@ open class ChatCaptureService : AccessibilityService() {
         }
         // Bubble menu: one manual screenshot + OCR, for any app at all.
         overlay?.onOcrCapture = { ocrCaptureManual() }
+        // Bubble menu: analyze only text the user explicitly copied.
+        overlay?.onAnalyzeClipboard = { analyzeClipboardText() }
 
         // Keep a collapsed entry point alive independently of chat-tree timing.
         // On clone-user apps (e.g. vivo app clone / user 999) accessibility
@@ -196,6 +193,21 @@ open class ChatCaptureService : AccessibilityService() {
         }
 
         val type = event.eventType
+        val eventPkg = event.packageName?.toString()
+
+        // WeChat formal mode is user-active by design. Do not touch
+        // rootInActiveWindow, view IDs, message nodes, OCR or model APIs merely
+        // because WeChat emitted an accessibility event. A user tap on the
+        // overlay is the boundary that may initiate one explicit read.
+        if (eventPkg == WECHAT_PKG) {
+            cloneUserMode = false
+            foregroundPkg = WECHAT_PKG
+            if (activePkg != WECHAT_PKG) invalidateAnalysis()
+            currentSnapshot = null
+            main.post { overlay?.showWeChatActiveMode() }
+            return
+        }
+
         // Decide "did we leave the chat app" from the REAL active window, not the
         // event's package. The event package can be an IME (e.g. com.tencent.wetype)
         // or the status bar while the chat app is still foreground — keying off it
@@ -216,6 +228,7 @@ open class ChatCaptureService : AccessibilityService() {
                 // to make every in-flight result/fill callback stale immediately.
                 if (fg != activePkg) invalidateAnalysis()
             }
+            if (fg == "com.vivo.doubleinstance") cloneUserMode = true
             if (fg != null && fg !in adapters) {
                 // Keep the collapsed bubble even over our own activity.
                 // Clone-user transitions may emit no accessibility event back to
@@ -259,23 +272,6 @@ open class ChatCaptureService : AccessibilityService() {
 
         when (type) {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
-                // WeChat often reports ChattingMainUI before its message subtree
-                // is readable. With no whitelist constraint, give instant UI
-                // feedback now and let the normal capture settle asynchronously.
-                val eventPkg = event.packageName?.toString()
-                val eventClass = event.className?.toString().orEmpty()
-                if (
-                    eventPkg == "com.tencent.mm" &&
-                    eventClass.contains("ChattingMainUI") &&
-                    prefs.whitelist.isEmpty()
-                ) {
-                    currentSnapshot = null
-                    main.post {
-                        overlay?.resetForNewConversation()
-                        overlay?.showIdle(null)
-                    }
-                    Log.i(TAG, "bubble fast-path: WeChat chat window")
-                }
                 maybeCapture(CaptureTrigger.WINDOW_CHANGED)
                 scheduleWindowSettle()
             }
@@ -311,6 +307,7 @@ open class ChatCaptureService : AccessibilityService() {
     private fun maybeCapture(trigger: CaptureTrigger) {
         val root = rootInActiveWindow ?: return
         val pkg = root.packageName?.toString()
+        if (pkg == WECHAT_PKG) return
         // Apps with no adapter are never handled automatically (v1.3 revision):
         // the only way in for them is the bubble menu's "截屏识别一次".
         val adapter = adapters[pkg] ?: return
@@ -331,7 +328,7 @@ open class ChatCaptureService : AccessibilityService() {
         )
         if (!prefs.isAllowed(snapshot.title)) { main.post { overlay?.hide() }; return }
         // In a chat window but the tree holds no text (Feishu draws its bodies,
-        // WeChat hides them when the disguise fails) → screenshot + OCR, subject
+        // some apps expose only limited nodes) → screenshot + OCR, subject
         // to ScreenCapture's own >=1s throttle and failure backoff.
         if (snapshot.messages.isEmpty()) {
             if (prefs.ocrFallback) {
@@ -543,7 +540,8 @@ open class ChatCaptureService : AccessibilityService() {
             overlay?.showReplies(
                 ranked,
                 pendingReplyError,
-                sorting = !pendingRepliesFinal
+                sorting = !pendingRepliesFinal,
+                allowDirectFill = session.pkg != WECHAT_PKG
             ) { text -> fillInput(text, session) }
         }
 
@@ -664,6 +662,92 @@ open class ChatCaptureService : AccessibilityService() {
         }
     }
 
+    /**
+     * Explicit one-shot window read initiated by the user. This is the only path
+     * that attempts WeChat AccessibilityNodeInfo extraction in formal mode.
+     * Failure never falls through to screenshot automatically.
+     */
+    private fun manualAnalyzeCurrentWindow() {
+        val root = rootInActiveWindow
+        if (root == null) {
+            overlay?.toast("当前窗口控件不可读，可改用剪贴板或本地截屏")
+            return
+        }
+        val pkg = root.packageName?.toString().orEmpty()
+        val adapter = adapters[pkg]
+        if (adapter == null) {
+            overlay?.showCaptureOnly("当前应用没有控件适配")
+            return
+        }
+        val raw = runCatching { adapter.extract(root, resources) }.getOrNull()
+        if (raw == null || raw.messages.isEmpty()) {
+            overlay?.showCaptureOnly(
+                if (pkg == WECHAT_PKG) "微信当前控件不可读，可选剪贴板或本地 OCR"
+                else "当前页面控件不可读"
+            )
+            return
+        }
+
+        val snapshot = stabilizeTitle(pkg, raw)
+        if (!prefs.isAllowed(snapshot.title)) {
+            overlay?.toast("当前会话不在白名单")
+            return
+        }
+        cloneUserMode = false
+        activePkg = pkg
+        foregroundPkg = pkg
+        currentSnapshot = snapshot
+        lastSignature = snapshot.signature()
+        invalidateAnalysis()
+        // invalidateAnalysis clears current async work, not the snapshot itself.
+        currentSnapshot = snapshot
+        pendingSnapshot = snapshot
+        pendingHistoryHint = HistoryCaptureHint.CONSERVATIVE
+        runAnalysis()
+    }
+
+    /**
+     * Analyze only text the user explicitly placed on the clipboard. Android may
+     * deny background clipboard reads on some builds; in that case we fail
+     * visibly and leave screenshot OCR as an optional alternative.
+     */
+    private fun analyzeClipboardText() {
+        val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        val text = runCatching {
+            val clip = cm.primaryClip ?: return@runCatching ""
+            if (clip.itemCount <= 0) "" else clip.getItemAt(0).coerceToText(this).toString()
+        }.getOrDefault("").trim()
+
+        if (text.isBlank()) {
+            overlay?.toast("剪贴板没有可分析文字；请先在微信里复制")
+            return
+        }
+        val msgs = text.lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .take(30)
+            .map { Msg("other", it) }
+            .toList()
+        if (msgs.isEmpty()) {
+            overlay?.toast("剪贴板没有可分析文字")
+            return
+        }
+
+        val pkg = if (cloneUserMode) WECHAT_PKG else foregroundPkg.orEmpty()
+        val snapshot = ChatSnapshot(
+            title = null,
+            messages = msgs,
+            note = "剪贴板文本 · 由你主动复制；未自动判断说话人"
+        )
+        activePkg = pkg
+        currentSnapshot = snapshot
+        invalidateAnalysis()
+        currentSnapshot = snapshot
+        pendingSnapshot = snapshot
+        pendingHistoryHint = HistoryCaptureHint.CONSERVATIVE
+        runAnalysis()
+    }
+
     // ------------------------------------------------------------------ OCR
 
     /**
@@ -674,7 +758,8 @@ open class ChatCaptureService : AccessibilityService() {
      */
     private fun ocrCaptureManual() {
         val root = rootInActiveWindow
-        val pkg = root?.packageName?.toString() ?: foregroundPkg ?: activePkg ?: ""
+        val pkg = if (cloneUserMode) WECHAT_PKG
+            else root?.packageName?.toString() ?: foregroundPkg ?: activePkg ?: ""
         // Top bar text, if this app has one we can read; else the first OCR line.
         val title = root?.let {
             findTitleInActionBar(it, Int.MAX_VALUE, resources.displayMetrics.widthPixels, resources, 0.15, 0.85)
@@ -1227,6 +1312,7 @@ open class ChatCaptureService : AccessibilityService() {
         overlay?.onManualAnalyze = null
         overlay?.onSaveContact = null
         overlay?.onOcrCapture = null
+        overlay?.onAnalyzeClipboard = null
         overlay?.hide()
         overlay = null
         worker.shutdownNow()
@@ -1235,6 +1321,7 @@ open class ChatCaptureService : AccessibilityService() {
 
     companion object {
         private const val TAG = "JEVASSIST"
+        private const val WECHAT_PKG = "com.tencent.mm"
 
         /** Whole-screen OCR keeps the middle: no action bar, no input area. */
         private const val TOP_CROP = 0.12f

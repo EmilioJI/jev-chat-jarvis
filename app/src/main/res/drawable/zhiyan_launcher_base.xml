@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:insetLeft="2%"
+    android:insetTop="2%"
+    android:insetRight="2%"
+    android:insetBottom="2%">
+    <bitmap
+        android:gravity="fill"
+        android:filter="true"
+        android:src="@drawable/zhiyan_launcher_family" />
+</inset>

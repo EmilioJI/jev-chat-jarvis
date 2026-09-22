@@ -15,13 +15,23 @@ import java.net.URI
 class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
 
     private val sp = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+    private val secureSecrets =
+        if (prefsName == PREFS_MAIN) SecureSecretStore(context, sp) else null
 
     /**
      * Only the real config migrates — and only the real config logs it. The
      * throwaway instances behind the settings test buttons and the KB self-check
      * have nothing to carry over, and used to print one migration line per tap.
      */
-    init { if (prefsName == PREFS_MAIN) migrateIfNeeded() }
+    init {
+        if (prefsName == PREFS_MAIN) {
+            migrateIfNeeded()
+            // Proactively migrate any v1.3 plaintext route keys.
+            judgeKey
+            replyKey
+            visionKey
+        }
+    }
 
     /**
      * v1.2 -> v1.3: the single `openrouter_key` becomes the judge route's key.
@@ -54,8 +64,8 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
         set(v) = sp.edit().putString(K_JUDGE_BASE, v.trim()).apply()
 
     var judgeKey: String
-        get() = sp.getString(K_JUDGE_KEY, "") ?: ""
-        set(v) = sp.edit().putString(K_JUDGE_KEY, v.trim()).apply()
+        get() = readSecret(K_JUDGE_KEY, K_JUDGE_KEY_ENC)
+        set(v) = writeSecret(K_JUDGE_KEY, K_JUDGE_KEY_ENC, v.trim())
 
     var judgeModel: String
         get() = sp.getString(K_JUDGE_MODEL, DEFAULT_JUDGE_MODEL_OPENROUTER) ?: DEFAULT_JUDGE_MODEL_OPENROUTER
@@ -75,8 +85,8 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
 
     /** Blank = fall back to [judgeKey]. */
     var replyKey: String
-        get() = sp.getString(K_REPLY_KEY, "") ?: ""
-        set(v) = sp.edit().putString(K_REPLY_KEY, v.trim()).apply()
+        get() = readSecret(K_REPLY_KEY, K_REPLY_KEY_ENC)
+        set(v) = writeSecret(K_REPLY_KEY, K_REPLY_KEY_ENC, v.trim())
 
     /** Generative model for drafting the 3 candidate replies. */
     var replyModel: String
@@ -96,8 +106,8 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
 
     /** Blank = fall back to [replyKey] then [judgeKey]. */
     var visionKey: String
-        get() = sp.getString(K_VISION_KEY, "") ?: ""
-        set(v) = sp.edit().putString(K_VISION_KEY, v.trim()).apply()
+        get() = readSecret(K_VISION_KEY, K_VISION_KEY_ENC)
+        set(v) = writeSecret(K_VISION_KEY, K_VISION_KEY_ENC, v.trim())
 
     var visionModel: String
         get() = sp.getString(K_VISION_MODEL, DEFAULT_VISION_MODEL) ?: DEFAULT_VISION_MODEL
@@ -188,6 +198,16 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
 
     // ------------------------------------------------------------- helpers
 
+    private fun readSecret(plainKey: String, encryptedKey: String): String =
+        secureSecrets?.readOrMigrate(encryptedKey, plainKey)
+            ?: (sp.getString(plainKey, "") ?: "")
+
+    private fun writeSecret(plainKey: String, encryptedKey: String, value: String) {
+        val secure = secureSecrets
+        if (secure != null) secure.write(encryptedKey, plainKey, value)
+        else sp.edit().putString(plainKey, value).apply()
+    }
+
     /**
      * Reply key. A blank key inherits the judge key only when both routes point
      * at the same host. Never send one provider's credential to another host.
@@ -261,12 +281,15 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
         private const val K_JUDGE_PROVIDER = "judge_provider"
         private const val K_JUDGE_BASE = "judge_base_url"
         private const val K_JUDGE_KEY = "judge_key"
+        private const val K_JUDGE_KEY_ENC = "judge_key_enc_v1"
         private const val K_JUDGE_MODEL = "judge_model"
         private const val K_REPLY_BASE = "reply_base_url"
         private const val K_REPLY_KEY = "reply_key"
+        private const val K_REPLY_KEY_ENC = "reply_key_enc_v1"
         private const val K_REPLY_MODEL = "reply_model"
         private const val K_VISION_BASE = "vision_base_url"
         private const val K_VISION_KEY = "vision_key"
+        private const val K_VISION_KEY_ENC = "vision_key_enc_v1"
         private const val K_VISION_MODEL = "vision_model"
         private const val K_CTX_ENABLED = "context_enabled"
         private const val K_CTX_COUNT = "context_history_count"

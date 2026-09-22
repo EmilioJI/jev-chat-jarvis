@@ -16,6 +16,7 @@ import com.jev.probe.core.BubbleRect
 import com.jev.probe.core.ChatSnapshot
 import com.jev.probe.core.Msg
 import com.jev.probe.core.Prefs
+import com.jev.probe.core.RankedReply
 import com.jev.probe.core.kb.ContextBuilder
 import com.jev.probe.core.kb.KbStore
 import com.jev.probe.jev.JevClient
@@ -54,15 +55,33 @@ open class ChatCaptureService : AccessibilityService() {
     private var overlay: OverlayController? = null
 
     private var lastSignature: String = ""
-    private var activePkg: String? = null
+    @Volatile private var activePkg: String? = null
     private var analyzing = false
 
-    /** Last known-good (non-transient) title per package. See [isTransientTitle]:
-     *  a page like X's DM thread briefly shows "连接中…" as `snapshot.title`
-     *  right after opening, which must never overwrite a real conversation
-     *  title or get saved as a contact name. Never cleared on app switch — the
-     *  next real title for that package simply replaces it. */
-    private val lastGoodTitle: MutableMap<String, String> = HashMap()
+    /**
+     * Monotonic generation for analysis work. Every real conversation/content
+     * change invalidates the previous generation. Network calls are not forcibly
+     * cancelled, but their callbacks are ignored once their generation is stale.
+     */
+    @Volatile private var analysisEpoch = 0L
+
+    private data class AnalysisSession(
+        val epoch: Long,
+        val pkg: String,
+        val signature: String,
+        val messageSignature: String,
+        val title: String?
+    )
+
+    private data class TitleEvidence(
+        val title: String,
+        val messageKeys: Set<String>
+    )
+
+    /** Last known-good title per package, tied to recent message evidence.
+     *  A transient title from a newly opened conversation must never inherit the
+     *  previous conversation's contact/title just because the package is equal. */
+    private val lastGoodTitle: MutableMap<String, TitleEvidence> = HashMap()
     private val debounce = Runnable { runAnalysis() }
     private var pendingSnapshot: ChatSnapshot? = null
     @Volatile private var currentSnapshot: ChatSnapshot? = null
@@ -87,7 +106,11 @@ open class ChatCaptureService : AccessibilityService() {
         prefs = Prefs(this)
         overlay = OverlayController(this)
         overlay?.onManualAnalyze = {
-            currentSnapshot?.let { pendingSnapshot = it; runAnalysis() }
+            currentSnapshot?.let {
+                invalidateAnalysis()
+                pendingSnapshot = it
+                runAnalysis()
+            }
         }
         // Bubble menu: file the open conversation as a knowledge-base contact.
         // Contacts are never created automatically — this is the one-tap way in.
@@ -121,7 +144,11 @@ open class ChatCaptureService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
-        if (!prefs.enabled) { main.post { overlay?.hide() }; return }
+        if (!prefs.enabled) {
+            if (analyzing || pendingSnapshot != null) invalidateAnalysis()
+            main.post { overlay?.hide() }
+            return
+        }
 
         val type = event.eventType
         // Decide "did we leave the chat app" from the REAL active window, not the
@@ -138,8 +165,13 @@ open class ChatCaptureService : AccessibilityService() {
         // our own settings screens, the launcher, and the system UI.
         if (type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             val fg = rootInActiveWindow?.packageName?.toString()
-            if (fg != null && fg !in adapters) {
+            if (fg != null && fg != foregroundPkg) {
                 foregroundPkg = fg
+                // Leaving the package that produced the current analysis is enough
+                // to make every in-flight result/fill callback stale immediately.
+                if (fg != activePkg) invalidateAnalysis()
+            }
+            if (fg != null && fg !in adapters) {
                 val drop = fg == packageName ||
                     fg.contains("launcher", ignoreCase = true) ||
                     fg == "com.miui.home" ||
@@ -201,8 +233,9 @@ open class ChatCaptureService : AccessibilityService() {
         // back) → just put the bubble back, do NOT re-analyze (saves tokens/time).
         if (sig == lastSignature && !showing) { main.post { overlay?.showIdle(snapshot.title) }; return }
         // Anything else reaching here is a genuinely different conversation (new
-        // app, or new content in this one) — a leftover judgment/candidates from
-        // whatever was shown before must not leak into it.
+        // app, title, or content). Invalidate the old async generation BEFORE
+        // clearing the UI so a late network callback cannot repopulate it.
+        invalidateAnalysis()
         main.post { overlay?.resetForNewConversation() }
         lastSignature = sig
         Log.d(TAG, "snapshot[$pkg] title=${snapshot.title} n=${snapshot.messages.size} " +
@@ -229,55 +262,156 @@ open class ChatCaptureService : AccessibilityService() {
         return TRANSIENT_TITLE_WORDS.any { lower.contains(it.lowercase()) }
     }
 
-    /** Replace a transient title with the last known-good one for this package
-     *  (if any), and otherwise remember the current title as the new good one. */
+    /** Recent message keys used only as evidence that two transient-title reads
+     *  still belong to the same conversation. */
+    private fun messageKeys(snapshot: ChatSnapshot): Set<String> =
+        snapshot.messages.takeLast(6).map { it.side + "\u0000" + it.text }.toSet()
+
+    private fun messageSignature(snapshot: ChatSnapshot): String =
+        snapshot.messages.takeLast(6).joinToString("\u0002") { it.side + "\u0000" + it.text }
+
+    /** Replace a transient title only when recent message evidence overlaps with
+     *  the last titled snapshot for this package. A package-level title cache by
+     *  itself can attach chat B to chat A while B still says "连接中…". */
     private fun stabilizeTitle(pkg: String, snapshot: ChatSnapshot): ChatSnapshot {
         if (isTransientTitle(snapshot.title)) {
-            val good = lastGoodTitle[pkg] ?: return snapshot
-            return snapshot.copy(title = good)
+            val evidence = lastGoodTitle[pkg] ?: return snapshot
+            val keys = messageKeys(snapshot)
+            val sameConversation = keys.isNotEmpty() && keys.any { it in evidence.messageKeys }
+            return if (sameConversation) snapshot.copy(title = evidence.title) else snapshot
         }
-        snapshot.title?.let { lastGoodTitle[pkg] = it }
+        snapshot.title?.let { lastGoodTitle[pkg] = TitleEvidence(it, messageKeys(snapshot)) }
         return snapshot
+    }
+
+    /** Mark every older analysis/fill callback stale and cancel any pending debounce. */
+    private fun invalidateAnalysis() {
+        analysisEpoch++
+        analyzing = false
+        pendingSnapshot = null
+        main.removeCallbacks(debounce)
+    }
+
+    private fun sessionStillCurrent(session: AnalysisSession): Boolean {
+        val current = currentSnapshot ?: return false
+        return session.epoch == analysisEpoch &&
+            session.pkg == (activePkg ?: "") &&
+            session.signature == current.signature()
+    }
+
+    /**
+     * Re-read the active window before writing text. This is stricter than the
+     * overlay-generation check: even if the service has not processed the latest
+     * accessibility event yet, a different visible conversation blocks the fill.
+     */
+    private fun activeWindowMatches(session: AnalysisSession): Boolean {
+        if (!sessionStillCurrent(session)) return false
+        val root = rootInActiveWindow ?: return false
+        val pkg = root.packageName?.toString() ?: return false
+        if (pkg != session.pkg) return false
+
+        val adapter = adapters[pkg]
+        if (adapter != null) {
+            val now = runCatching { adapter.extract(root, resources) }.getOrNull() ?: return false
+            if (now.messages.isNotEmpty() && messageSignature(now) != session.messageSignature) return false
+            val nowTitle = now.title
+            if (!nowTitle.isNullOrBlank() && !session.title.isNullOrBlank() &&
+                !isTransientTitle(nowTitle) && nowTitle != session.title) return false
+        } else {
+            val nowTitle = runCatching {
+                findTitleInActionBar(
+                    root, Int.MAX_VALUE, resources.displayMetrics.widthPixels,
+                    resources, 0.15, 0.85)
+            }.getOrNull()
+            if (!nowTitle.isNullOrBlank() && !session.title.isNullOrBlank() &&
+                nowTitle != session.title) return false
+        }
+        return sessionStillCurrent(session)
     }
 
     private fun runAnalysis() {
         val snapshot = pendingSnapshot ?: return
         if (analyzing) return
         if (!prefs.hasKey()) { main.post { overlay?.showError("未设置判断接口密钥，去设置里填") }; return }
+
+        val pkg = activePkg ?: rootInActiveWindow?.packageName?.toString().orEmpty()
+        val session = AnalysisSession(
+            epoch = analysisEpoch,
+            pkg = pkg,
+            signature = snapshot.signature(),
+            messageSignature = messageSignature(snapshot),
+            title = snapshot.title
+        )
+
         analyzing = true
         main.post { overlay?.showLoading(); overlay?.setNote(snapshot.note) }
         val client = JevClient(prefs)
         val rel = prefs.relationship
-        val pkg = activePkg ?: ""
+
+        // Both network branches are concurrent, but publishing is coordinated on
+        // the main thread: replies that beat the judgment are held instead of
+        // being dropped by OverlayController.showReplies().
+        var judgmentReady = false
+        var judgmentOk = false
+        var pendingRanked: List<RankedReply>? = null
+        var pendingReplyError: String? = null
+
+        fun publishRepliesIfReady() {
+            val ranked = pendingRanked ?: return
+            if (!judgmentReady || !judgmentOk || !sessionStillCurrent(session)) return
+            analyzing = false
+            overlay?.showReplies(ranked, pendingReplyError) { text -> fillInput(text, session) }
+        }
+
         // Knowledge context first (local file reads only, a few ms), then the two
         // network calls in parallel on the pool. A failure here must never stop
         // the analysis — it just means no extra context this round.
-        submit {
+        submit contextTask@{
+            if (!sessionStillCurrent(session)) return@contextTask
             val ctx = try {
                 ContextBuilder.build(this, snapshot, pkg, prefs)
             } catch (e: Exception) {
                 Log.w(TAG, "context build failed: ${e.javaClass.simpleName}"); null
             }
-            main.post { overlay?.setContextInfo(ctx?.notes?.size ?: 0, ctx?.history?.size ?: 0) }
+            if (!sessionStillCurrent(session)) return@contextTask
+            main.post contextPost@{
+                if (!sessionStillCurrent(session)) return@contextPost
+                overlay?.setContextInfo(ctx?.notes?.size ?: 0, ctx?.history?.size ?: 0)
+            }
 
-            // Judgment is fast (~1s) — show it immediately.
-            submit {
+            // Judgment is usually fast — show it as soon as it arrives.
+            submit judgeTask@{
+                if (!sessionStillCurrent(session)) return@judgeTask
                 val judgment = client.judge(snapshot, rel, ctx)
-                main.post {
-                    if (judgment.error != null) { analyzing = false; overlay?.showError(judgment.error) }
-                    else overlay?.showJudgment(judgment)
+                main.post judgePost@{
+                    if (!sessionStillCurrent(session)) return@judgePost
+                    judgmentReady = true
+                    if (judgment.error != null) {
+                        analyzing = false
+                        overlay?.showError(judgment.error)
+                    } else {
+                        judgmentOk = true
+                        overlay?.showJudgment(judgment)
+                        publishRepliesIfReady()
+                    }
                 }
             }
-            // Candidate replies are slower (generative + rank) — fill in when ready.
-            submit {
+
+            // Candidate replies are slower (generative + rank). If they finish
+            // first, retain them until the judgment is on screen.
+            submit replyTask@{
+                if (!sessionStillCurrent(session)) return@replyTask
                 var replyError: String? = null
                 val ranked = try { client.draftAndRank(snapshot, rel, ctx) } catch (e: Exception) {
                     replyError = e.message ?: e.javaClass.simpleName
                     emptyList()
                 }
-                main.post {
-                    analyzing = false
-                    overlay?.showReplies(ranked, replyError) { text -> fillInput(text) }
+                main.post replyPost@{
+                    if (!sessionStillCurrent(session)) return@replyPost
+                    pendingReplyError = replyError
+                    pendingRanked = ranked
+                    if (judgmentReady && !judgmentOk) analyzing = false
+                    publishRepliesIfReady()
                 }
             }
         }
@@ -456,7 +590,8 @@ open class ChatCaptureService : AccessibilityService() {
             return
         }
         // Same rule as the tree path: past this point the conversation is either
-        // new or being force-refreshed, so drop whatever was shown before.
+        // new or being force-refreshed. Invalidate late async callbacks first.
+        invalidateAnalysis()
         overlay?.resetForNewConversation()
         lastSignature = sig
 
@@ -472,23 +607,42 @@ open class ChatCaptureService : AccessibilityService() {
     }
 
     /** Fill the chat input box with the chosen reply (never sends). */
-    private fun fillInput(text: String) {
-        submit {
+    private fun fillInput(text: String, session: AnalysisSession) {
+        if (!activeWindowMatches(session)) {
+            overlay?.toast("会话已变化，请重新分析")
+            return
+        }
+
+        submit fillTask@{
+            // Re-check on the worker immediately before any write. The user may
+            // have switched chats after tapping the overlay but before this task ran.
+            if (!activeWindowMatches(session)) {
+                main.post { overlay?.toast("会话已变化，请重新分析") }
+                return@fillTask
+            }
+
             // Fast path: SET_TEXT works when the box already has input focus and no
             // IME composing session is active.
             var ok = trySetText(text)
             if (!ok) {
                 // Otherwise focus the box (pops the keyboard) and retry SET_TEXT;
                 // if the IME composing region still swallows it (WeChat), PASTE from
-                // the clipboard. The box is cleared before PASTE so a SET_TEXT that
-                // silently took (but failed verification) never gets doubled.
-                // Never clicks send.
+                // the clipboard. Re-check after the keyboard transition because it
+                // is another window/event boundary where the visible chat can change.
                 val edit = rootInActiveWindow?.let { findEditable(it) }
                 if (edit != null) {
                     edit.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                     Thread.sleep(300)
+                    if (!activeWindowMatches(session)) {
+                        main.post { overlay?.toast("会话已变化，请重新分析") }
+                        return@fillTask
+                    }
                     ok = trySetText(text)
                     if (!ok) {
+                        if (!activeWindowMatches(session)) {
+                            main.post { overlay?.toast("会话已变化，请重新分析") }
+                            return@fillTask
+                        }
                         copyToClipboard(text)
                         val focused = rootInActiveWindow?.let { findEditable(it) } ?: edit
                         setTextRaw(focused, "")
@@ -501,8 +655,14 @@ open class ChatCaptureService : AccessibilityService() {
                 }
             }
             main.post {
-                if (ok) overlay?.toast("已填入，确认后自己发送")
-                else { copyToClipboard(text); overlay?.toast("已复制，长按输入框粘贴") }
+                if (!sessionStillCurrent(session)) {
+                    overlay?.toast("会话已变化，请检查输入框")
+                } else if (ok) {
+                    overlay?.toast("已填入，确认后自己发送")
+                } else {
+                    copyToClipboard(text)
+                    overlay?.toast("已复制，长按输入框粘贴")
+                }
             }
         }
     }
@@ -557,6 +717,7 @@ open class ChatCaptureService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        invalidateAnalysis()
         // Tear the overlay down and cut its callback so a stale button tap can
         // never call back into this dead instance.
         overlay?.onManualAnalyze = null

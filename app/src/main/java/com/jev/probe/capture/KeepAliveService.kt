@@ -20,16 +20,16 @@ class KeepAliveService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        val channelId = "jev_keepalive"
+        val channelId = "zhiyan_keepalive"
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val ch = NotificationChannel(channelId, "Jev 助手运行中", NotificationManager.IMPORTANCE_MIN)
+            val ch = NotificationChannel(channelId, "小书童·知言运行中", NotificationManager.IMPORTANCE_MIN)
             ch.setShowBadge(false)
             nm.createNotificationChannel(ch)
         }
         val notif: Notification = Notification.Builder(this, channelId)
             .setContentTitle("Jev 助手运行中")
-            .setContentText("在聊天旁读消息、给回复建议")
+            .setContentText("在聊天旁知言慎答，给出候选回复")
             .setSmallIcon(android.R.drawable.ic_menu_edit)
             .setOngoing(true)
             .build()

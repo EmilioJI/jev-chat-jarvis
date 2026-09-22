@@ -104,6 +104,17 @@ open class ChatCaptureService : AccessibilityService() {
      *  previous conversation's contact/title just because the package is equal. */
     private val lastGoodTitle: MutableMap<String, TitleEvidence> = HashMap()
     private val debounce = Runnable { runAnalysis() }
+
+    // Android/WeChat window transitions are not atomic: TYPE_WINDOW_STATE_CHANGED
+    // can arrive before the new chat's accessibility tree is populated. Re-read
+    // shortly afterwards so the bubble does not depend on a lucky later scroll
+    // or content event. Separate Runnables let us cancel event storms cleanly.
+    private val windowSettleFast = Runnable { retryCapture(CaptureTrigger.WINDOW_CHANGED) }
+    private val windowSettleLate = Runnable { retryCapture(CaptureTrigger.WINDOW_CHANGED) }
+    private val contentSettle = Runnable { retryCapture(CaptureTrigger.CONTENT_CHANGED) }
+    private val restoreSettleFast = Runnable { retryCapture(CaptureTrigger.RESTORE) }
+    private val restoreSettleLate = Runnable { retryCapture(CaptureTrigger.RESTORE) }
+
     private var pendingSnapshot: ChatSnapshot? = null
     private var pendingHistoryHint: HistoryCaptureHint = HistoryCaptureHint.CONSERVATIVE
     @Volatile private var currentSnapshot: ChatSnapshot? = null
@@ -159,12 +170,11 @@ open class ChatCaptureService : AccessibilityService() {
         // Load the bundled OCR model now, off the main thread: the first
         // recognize() otherwise pays for it inside the screenshot callback.
         submit { MlKitOcr.warmUp() }
-        // HyperOS may kill and restart us. On (re)connect, proactively re-show the
-        // bubble for whatever chat is already open, so it comes back on its own
-        // instead of waiting for the user to scroll.
-        main.postDelayed({
-            if (prefs.enabled) runCatching { maybeCapture(CaptureTrigger.RESTORE) }
-        }, 900)
+        // OEMs may kill/restart the service while a chat is already open. Probe
+        // twice: an early read for responsiveness and a later read after the
+        // accessibility tree has fully settled.
+        main.postDelayed(restoreSettleFast, 120)
+        main.postDelayed(restoreSettleLate, 650)
         Log.i(TAG, "capture service connected")
     }
 
@@ -220,13 +230,37 @@ open class ChatCaptureService : AccessibilityService() {
         }
 
         when (type) {
-            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ->
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
                 maybeCapture(CaptureTrigger.WINDOW_CHANGED)
-            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ->
+                scheduleWindowSettle()
+            }
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
                 maybeCapture(CaptureTrigger.CONTENT_CHANGED)
+                scheduleContentSettle()
+            }
             AccessibilityEvent.TYPE_VIEW_SCROLLED ->
                 maybeCapture(CaptureTrigger.VIEW_SCROLLED)
         }
+    }
+
+    private fun retryCapture(trigger: CaptureTrigger) {
+        if (!::prefs.isInitialized || !prefs.enabled) return
+        runCatching { maybeCapture(trigger) }
+            .onFailure { Log.d(TAG, "settle capture skipped: ${it.javaClass.simpleName}") }
+    }
+
+    private fun scheduleWindowSettle() {
+        main.removeCallbacks(windowSettleFast)
+        main.removeCallbacks(windowSettleLate)
+        main.postDelayed(windowSettleFast, 120)
+        main.postDelayed(windowSettleLate, 420)
+    }
+
+    private fun scheduleContentSettle() {
+        // One short retry catches the common case where the event precedes the
+        // updated bubble subtree. Repeated content events coalesce into one retry.
+        main.removeCallbacks(contentSettle)
+        main.postDelayed(contentSettle, 140)
     }
 
     private fun maybeCapture(trigger: CaptureTrigger) {
@@ -307,6 +341,10 @@ open class ChatCaptureService : AccessibilityService() {
             return
         }
 
+        // The bubble is UI feedback, not an analysis result. Show it immediately
+        // so the user never waits on debounce/network just to know the assistant
+        // is alive; the panel changes to "分析中…" when runAnalysis starts.
+        main.post { overlay?.showIdle(snapshot.title) }
         pendingSnapshot = snapshot
         pendingHistoryHint = HistoryCaptureHint.NEWEST_SCREEN
         main.removeCallbacks(debounce)
@@ -1133,6 +1171,11 @@ open class ChatCaptureService : AccessibilityService() {
     override fun onDestroy() {
         super.onDestroy()
         invalidateAnalysis()
+        main.removeCallbacks(windowSettleFast)
+        main.removeCallbacks(windowSettleLate)
+        main.removeCallbacks(contentSettle)
+        main.removeCallbacks(restoreSettleFast)
+        main.removeCallbacks(restoreSettleLate)
         // Tear the overlay down and cut its callback so a stale button tap can
         // never call back into this dead instance.
         overlay?.onManualAnalyze = null

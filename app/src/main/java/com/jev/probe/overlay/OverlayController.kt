@@ -23,6 +23,7 @@ import com.jev.probe.core.Analysis
 import com.jev.probe.core.ChatSnapshot
 import com.jev.probe.core.Prefs
 import com.jev.probe.core.RankedReply
+import com.jev.probe.ui.Guofeng
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -80,16 +81,21 @@ class OverlayController(private val ctx: Context) {
     private val screenW get() = ctx.resources.displayMetrics.widthPixels
     private val screenH get() = ctx.resources.displayMetrics.heightPixels
 
-    /** Panel background: white with the user's opacity so the chat shows through. */
+    /** Warm paper panel with the user's opacity so the chat remains visible. */
     private fun panelBg(): Int {
         val a = (prefs.overlayOpacity / 100f * 255).roundToInt().coerceIn(150, 255)
-        return Color.argb(a, 255, 255, 255)
+        return Color.argb(
+            a,
+            Color.red(Guofeng.CARD),
+            Color.green(Guofeng.CARD),
+            Color.blue(Guofeng.CARD)
+        )
     }
 
     private fun card(radius: Int, color: Int, stroke: Boolean = false) = GradientDrawable().apply {
         cornerRadius = dp(radius).toFloat()
         setColor(color)
-        if (stroke) setStroke(dp(1), Color.parseColor("#22000000"))
+        if (stroke) setStroke(dp(1), Guofeng.BORDER)
     }
 
     // ---------------------------------------------------------------- window
@@ -127,13 +133,19 @@ class OverlayController(private val ctx: Context) {
         }
         val b = TextView(ctx).apply {
             text = "Jev"
-            setTextColor(Color.WHITE)
+            setTextColor(Guofeng.CARD)
             gravity = Gravity.CENTER
             textSize = 13f
-            setTypeface(typeface, Typeface.BOLD)
+            typeface = Guofeng.serif(true)
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
-                setColor(Color.argb(235, 58, 122, 254))
+                setColor(Color.argb(
+                    242,
+                    Color.red(Guofeng.JADE_DEEP),
+                    Color.green(Guofeng.JADE_DEEP),
+                    Color.blue(Guofeng.JADE_DEEP)
+                ))
+                setStroke(dp(1), Guofeng.BORDER_JADE)
             }
             layoutParams = FrameLayout.LayoutParams(dp(52), dp(52))
         }
@@ -164,8 +176,8 @@ class OverlayController(private val ctx: Context) {
         // Header
         val header = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         header.addView(TextView(ctx).apply {
-            text = "Jev 分析"; setTextColor(Color.parseColor("#111827")); textSize = 15f
-            setTypeface(typeface, Typeface.BOLD)
+            text = "Jev · 对话研判"; setTextColor(Guofeng.JADE_DEEP); textSize = 15f
+            typeface = Guofeng.serif(true)
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
         header.addView(iconBtn("⚙") { openSettings() })
@@ -188,7 +200,7 @@ class OverlayController(private val ctx: Context) {
     }
 
     private fun iconBtn(glyph: String, onClick: () -> Unit) = TextView(ctx).apply {
-        text = glyph; setTextColor(Color.parseColor("#6B7280")); textSize = 16f
+        text = glyph; setTextColor(Guofeng.INK_SOFT); textSize = 16f
         setPadding(dp(10), dp(2), dp(6), dp(2))
         setOnClickListener { onClick() }
     }
@@ -249,7 +261,7 @@ class OverlayController(private val ctx: Context) {
     }
 
     private fun menuItem(label: String, onClick: () -> Unit) = TextView(ctx).apply {
-        text = label; setTextColor(Color.parseColor("#111827")); textSize = 14f
+        text = label; setTextColor(Guofeng.INK); textSize = 14f
         setPadding(dp(12), dp(10), dp(12), dp(10)); setOnClickListener { onClick() }
     }
 
@@ -315,8 +327,8 @@ class OverlayController(private val ctx: Context) {
 
     private fun bigButton(label: String, onClick: () -> Unit) = TextView(ctx).apply {
         text = label; textSize = 14f; gravity = Gravity.CENTER
-        setTextColor(Color.WHITE); setTypeface(typeface, Typeface.BOLD)
-        background = card(12, Color.parseColor("#3A7AFE"))
+        setTextColor(Guofeng.CARD); typeface = Guofeng.serif(true)
+        background = card(14, Guofeng.JADE_DEEP)
         setPadding(dp(12), dp(11), dp(12), dp(11))
         layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -352,7 +364,7 @@ class OverlayController(private val ctx: Context) {
     fun showError(msg: String) {
         ensureRoot(); bubble?.alpha = 1f
         setContent(listOf(
-            line("出错了", "#DC2626", 14f, true),
+            line("出错了", "#A63731", 14f, true),
             hint(msg)))
     }
 
@@ -405,7 +417,7 @@ class OverlayController(private val ctx: Context) {
         }
         // Intent headline.
         a.trueIntent?.let {
-            views.add(line("对方真实意图：${INTENT[it.choice] ?: it.choice}", "#111827", 15f, true))
+            views.add(line("对方真实意图：${INTENT[it.choice] ?: it.choice}", "#184940", 15f, true))
             views.add(hint("把握 ${(it.confidence * 100).roundToInt()}%"))
         }
         // Compact secondary line: needs · action · reply-now.
@@ -413,11 +425,11 @@ class OverlayController(private val ctx: Context) {
         a.sheNeeds?.let { bits.add("要${(NEEDS[it.choice] ?: it.choice)}") }
         a.bestAction?.let { bits.add(ACTION[it.choice] ?: it.choice) }
         a.shouldReplyNow?.let { bits.add(if (it >= 0.5) "可给实质" else "先别给实质") }
-        if (bits.isNotEmpty()) views.add(line(bits.joinToString("  ·  "), "#374151", 13f))
-        a.tensionResolved?.let { if (it >= 0.7) views.add(line("✓ 紧张已缓解", "#16A34A", 12f)) }
+        if (bits.isNotEmpty()) views.add(line(bits.joinToString("  ·  "), "#5C6560", 13f))
+        a.tensionResolved?.let { if (it >= 0.7) views.add(line("✓ 紧张已缓解", "#2E7858", 12f)) }
 
         views.add(divider())
-        views.add(line("候选回复（Jev 排序）", "#9CA3AF", 12f))
+        views.add(line("推荐回复 · Jev 排序", "#976F3E", 12f, true))
         if (generating) {
             views.add(hint("生成中…"))
         } else {
@@ -457,7 +469,7 @@ class OverlayController(private val ctx: Context) {
 
     private fun replyCard(rank: Int, text: String, pct: Int, onFill: (String) -> Unit): View {
         val top = rank == 1
-        val cardBg = if (top) Color.parseColor("#EAF1FF") else Color.parseColor("#F3F4F6")
+        val cardBg = if (top) Guofeng.JADE_PALE else Guofeng.CARD_SOFT
         val c = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             background = card(12, cardBg)
@@ -467,11 +479,11 @@ class OverlayController(private val ctx: Context) {
             ).apply { topMargin = dp(6) }
         }
         c.addView(TextView(ctx).apply {
-            this.text = "#$rank · ${pct}%"; setTextColor(Color.parseColor("#3A7AFE")); textSize = 11f
+            this.text = if (top) "推荐 · ${pct}%" else "#$rank · ${pct}%"; setTextColor(if (top) Guofeng.JADE_DEEP else Guofeng.GOLD); textSize = 11f
             setTypeface(typeface, Typeface.BOLD)
         })
         c.addView(TextView(ctx).apply {
-            this.text = text; setTextColor(Color.parseColor("#111827")); textSize = 14f
+            this.text = text; setTextColor(Guofeng.INK); textSize = 14f
             setPadding(0, dp(3), 0, dp(7)); setLineSpacing(dp(2).toFloat(), 1f)
         })
         val btns = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
@@ -485,8 +497,8 @@ class OverlayController(private val ctx: Context) {
     private fun pill(label: String, primary: Boolean, onClick: () -> Unit) = TextView(ctx).apply {
         text = label; textSize = 13f; gravity = Gravity.CENTER
         setTypeface(typeface, Typeface.BOLD)
-        setTextColor(if (primary) Color.WHITE else Color.parseColor("#3A7AFE"))
-        background = card(18, if (primary) Color.parseColor("#3A7AFE") else Color.parseColor("#FFFFFF"), stroke = !primary)
+        setTextColor(if (primary) Guofeng.CARD else Guofeng.JADE_DEEP)
+        background = card(18, if (primary) Guofeng.JADE_DEEP else Guofeng.CARD, stroke = !primary)
         setPadding(dp(18), dp(6), dp(18), dp(6))
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
@@ -496,7 +508,7 @@ class OverlayController(private val ctx: Context) {
 
     private fun reAnalyzeBtn() = TextView(ctx).apply {
         text = "重新分析"; textSize = 13f; gravity = Gravity.CENTER
-        setTextColor(Color.parseColor("#6B7280"))
+        setTextColor(Guofeng.INK_SOFT)
         setPadding(dp(10), dp(10), dp(10), dp(4))
         setOnClickListener { onManualAnalyze?.invoke() }
     }
@@ -517,10 +529,10 @@ class OverlayController(private val ctx: Context) {
             setPadding(0, dp(2), 0, dp(2))
         }
 
-    private fun hint(text: String) = line(text, "#9CA3AF", 12f)
+    private fun hint(text: String) = line(text, "#898B82", 12f)
 
     private fun divider() = View(ctx).apply {
-        setBackgroundColor(Color.parseColor("#1F000000"))
+        setBackgroundColor(Color.argb(35, 151, 111, 62))
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)).apply {
             topMargin = dp(8); bottomMargin = dp(4)
         }
@@ -533,9 +545,9 @@ class OverlayController(private val ctx: Context) {
     }
 
     private fun dangerColor(lvl: Int): Int = when {
-        lvl >= 6 -> Color.parseColor("#DC2626")
-        lvl >= 3 -> Color.parseColor("#D97706")
-        else -> Color.parseColor("#16A34A")
+        lvl >= 6 -> Guofeng.DANGER
+        lvl >= 3 -> Guofeng.WARNING
+        else -> Guofeng.SUCCESS
     }
 
     private fun dangerWord(lvl: Int): String = when {

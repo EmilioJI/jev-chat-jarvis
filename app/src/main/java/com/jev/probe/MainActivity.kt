@@ -122,7 +122,7 @@ class MainActivity : AppCompatActivity() {
         })
 
         container.addView(text(
-            "微信 · QQ · X · 飞书  |  填入后仍由你确认发送",
+            "微信 · QQ · X · 飞书  |  候选回复由你复制、粘贴并发送",
             11.5f,
             Guofeng.INK_FAINT
         ).apply {

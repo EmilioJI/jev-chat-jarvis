@@ -80,7 +80,7 @@ class JudgeClient(private val prefs: Prefs) {
         ctx: ChatContext?,
         questions: JSONObject
     ): JSONObject {
-        val background = ctx?.background(relationship) ?: ""
+        val background = ctx?.background() ?: ""
         val history = ctx?.history ?: emptyList()
         val enriched = background.isNotBlank() || history.isNotEmpty()
         return try {

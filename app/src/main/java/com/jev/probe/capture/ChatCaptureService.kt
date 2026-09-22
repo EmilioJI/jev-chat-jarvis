@@ -1,14 +1,20 @@
 package com.jev.probe.capture
 
 import android.accessibilityservice.AccessibilityService
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Bitmap
 import android.graphics.Rect
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.jev.probe.ClipboardImportActivity
 import com.jev.probe.capture.ocr.MlKitOcr
 import com.jev.probe.capture.ocr.OcrLine
 import com.jev.probe.capture.ocr.ScreenCapture
@@ -135,9 +141,28 @@ open class ChatCaptureService : AccessibilityService() {
      *  See [ocrSignature]: this is the brake on the OCR path. */
     private var lastOcrSignature: String = ""
 
+    private var clipboardReceiverRegistered = false
+    private val clipboardReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != ClipboardImportActivity.ACTION_CLIPBOARD_READY) return
+            val text = intent.getStringExtra(ClipboardImportActivity.EXTRA_TEXT).orEmpty()
+            handleClipboardText(text)
+        }
+    }
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         prefs = Prefs(this)
+        if (!clipboardReceiverRegistered) {
+            val filter = IntentFilter(ClipboardImportActivity.ACTION_CLIPBOARD_READY)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(clipboardReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("DEPRECATION")
+                registerReceiver(clipboardReceiver, filter)
+            }
+            clipboardReceiverRegistered = true
+        }
         overlay = OverlayController(this)
         overlay?.onManualAnalyze = { manualAnalyzeCurrentWindow() }
         // Bubble menu: file the open conversation as a knowledge-base contact.
@@ -657,17 +682,20 @@ open class ChatCaptureService : AccessibilityService() {
     }
 
     /**
-     * Analyze only text the user explicitly placed on the clipboard. Android may
-     * deny background clipboard reads on some builds; in that case we fail
-     * visibly and leave screenshot OCR as an optional alternative.
+     * Launch a transparent foreground Activity as a direct result of the user tap.
+     * Android 10+ restricts background clipboard reads, so this service never
+     * reads the system clipboard directly.
      */
     private fun analyzeClipboardText() {
-        val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
-        val text = runCatching {
-            val clip = cm.primaryClip ?: return@runCatching ""
-            if (clip.itemCount <= 0) "" else clip.getItemAt(0).coerceToText(this).toString()
-        }.getOrDefault("").trim()
+        val intent = Intent(this, ClipboardImportActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
+        runCatching { startActivity(intent) }
+            .onFailure { e -> overlay?.toast("无法打开剪贴板导入：" + e.javaClass.simpleName) }
+    }
 
+    /** Process text handed back by the foreground clipboard Activity. */
+    private fun handleClipboardText(raw: String) {
+        val text = raw.trim()
         if (text.isBlank()) {
             overlay?.toast("剪贴板没有可分析文字；请先在微信里复制")
             return
@@ -1145,6 +1173,10 @@ open class ChatCaptureService : AccessibilityService() {
     override fun onDestroy() {
         super.onDestroy()
         invalidateAnalysis()
+        if (clipboardReceiverRegistered) {
+            runCatching { unregisterReceiver(clipboardReceiver) }
+            clipboardReceiverRegistered = false
+        }
         main.removeCallbacks(windowSettleFast)
         main.removeCallbacks(windowSettleLate)
         main.removeCallbacks(contentSettle)

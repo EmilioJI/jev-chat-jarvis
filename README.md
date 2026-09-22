@@ -1,28 +1,28 @@
-# Jev 聊天助手 (Jev Chat Assistant)
+# 小书童·知言
 
-**装在手机上的「对话副驾」：你在任何聊天 App 里聊天，它在旁边读懂对方、告诉你该怎么回，一键填进输入框，发不发由你。**
+**小书童系列的聊天「对话副驾」：在微信、QQ、X、飞书等聊天界面旁读懂当前对话，给出判断与三条候选回复，一键填入输入框，发不发由你。**
 
 已在 **微信、QQ、X（Twitter 私信）** 三个平台真机跑通，飞书采集已接入。一套内核，一个 App 一个几十行的适配器。
 
 **联系 / 反馈 / 合作：请公众号私信**（二维码见文末）。 官网：[chatjevs.com](https://chatjevs.com)
 
 <p align="center">
-  <img src="docs/images/overlay.png" width="300" alt="悬浮窗：聊天上方的 Jev 分析面板" />
+  <img src="docs/images/overlay.png" width="300" alt="悬浮窗：聊天上方的小书童·知言分析面板" />
   &nbsp;&nbsp;&nbsp;
   <img src="docs/images/settings.png" width="300" alt="设置页" />
 </p>
-<p align="center"><sub>左：悬浮窗——危险等级、对方真实意图、Jev 排好序的 3 条候选回复，复制或填入。右：设置页。</sub></p>
+<p align="center"><sub>左：小书童·知言悬浮窗——危险等级、对方真实意图、3 条候选回复与 Jev 排序，复制或填入。右：设置页。</sub></p>
 
 ## 亮点
 
 - **一套内核，多平台。** 微信 8.0.78、QQ 9.3.50、X 12.25 真机验证，读消息 → 判断 → 候选 → 填入整条链全通。新增一个 App 只需实现一个 `ChatAppAdapter`，其余全部复用。
 - **非侵入。** 不 hook、不改包、不走任何 App 的接口或账号、不读数据库，只用系统无障碍服务读「屏幕上正在显示的对话」。微信这种混淆节点的也能读到。
 - **判断引擎可替换。** 默认推荐通过 OpenRouter 使用 TypeSafe Jev Decisions；已有 TypeSafe Key 的用户可直连，也可切换到 GLM-4.7 结构化判断。三种路径统一输出：真实意图、危险等级（1–9）、对方要什么、该不该马上回、最佳动作。
-- **3 条候选，Jev 排序。** 生成模型（默认 DeepSeek）起草 3 条口语化回复，Jev 按「最合适」排序并给出占比。
+- **3 条候选，Jev 排序。** 回复模型起草 3 条口语化回复，候选先显示，Jev 排序完成后原位升级推荐顺序。DeepSeek `deepseek-flash` 强制关闭 thinking；GLM-5.3-Flash 强制 `reasoning_effort=low`，优先降低实时回复延迟。
 - **发送永远由你点。** 程序只把回复填进输入框，从不自动发送，不碰转账 / 红包 / 收款。
 - **知识库 + 关联上下文。** 本地维护笔记和联系人档案（关系、别名、备注），分析时自动带上命中的知识和这个人的历史聊天，候选回复与知识库一致；联系人可跨 App 关联（同一个人在微信和 QQ 用别名对上）。历史记录默认关闭，开了也只存本机。
 - **读不到就 OCR。** 树里没有正文时自动截屏、用 ML Kit 中文离线识别（不上传图片、不需要 Google 服务），飞书正文靠它；任何 App 都可以在悬浮窗菜单里手动「截屏识别一次」。
-- **接口全可配。** 判断 / 回复 / 视觉三路接口的地址、密钥、模型分别可填。判断预设包含 OpenRouter Jev（推荐）、TypeSafe 直连（已有 Key）和 GLM-4.7；回复预设包含 OpenRouter、DeepSeek、GLM-4.7、通义兼容。空 Key 只会在目标接口与来源接口属于同一 host 时继承，绝不会把一个服务商的 Bearer Key 发给另一个服务商。
+- **接口全可配。** 判断 / 回复 / 视觉三路接口的地址、密钥、模型分别可填。判断预设包含 OpenRouter Jev（推荐）、TypeSafe 直连（已有 Key）和 GLM-4.7；回复预设包含 OpenRouter、DeepSeek Flash、GLM-5.3-Flash、通义兼容。空 Key 只会在目标接口与来源接口属于同一 host 时继承，绝不会把一个服务商的 Bearer Key 发给另一个服务商。
 - **隐私在本机。** 正式 API Key 使用 AndroidKeyStore 持有的 AES-256-GCM 密钥加密，SharedPreferences 只保存密文；聊天内容只在分析时发送给用户选定的模型接口，不进日志。聊天历史默认关闭，只有用户主动开启关联上下文后才写入 App 私有目录。
 
 ## 平台支持
@@ -46,7 +46,7 @@
 adb install -r apk/jev-assistant-v1.3-release.apk
 ```
 
-**2. 填密钥。** 打开 App → 设置 →「接口」。新用户推荐在「判断引擎」选择 OpenRouter（Jev），直接使用 OpenRouter API Key；TypeSafe 直连仅适合已有 TypeSafe Key 的用户。也可以选择 GLM-4.7，并使用智谱 Key。回复接口可以独立选择 OpenRouter / DeepSeek / GLM-4.7 / 通义兼容。若判断与回复选的是同一服务商，回复 Key 可留空继承；跨服务商时必须分别填写，防止凭据误发。
+**2. 填密钥。** 打开 App → 设置 →「接口」。新用户推荐在「判断引擎」选择 OpenRouter（Jev），直接使用 OpenRouter API Key；TypeSafe 直连仅适合已有 TypeSafe Key 的用户。也可以选择 GLM-4.7，并使用智谱 Key。回复接口可以独立选择 OpenRouter / DeepSeek Flash / GLM-5.3-Flash / 通义兼容。若判断与回复选的是同一服务商，回复 Key 可留空继承；跨服务商时必须分别填写，防止凭据误发。
 
 **3. 开权限。** 按主页向导开三项：
 - 无障碍（读消息；升级到 1.3 后需要把无障碍关掉再打开一次，截屏能力才生效）

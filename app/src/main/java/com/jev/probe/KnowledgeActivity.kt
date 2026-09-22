@@ -1,7 +1,5 @@
 package com.jev.probe
 
-import android.graphics.Color
-import android.graphics.Typeface
 import android.os.Bundle
 import android.text.InputType
 import android.util.TypedValue

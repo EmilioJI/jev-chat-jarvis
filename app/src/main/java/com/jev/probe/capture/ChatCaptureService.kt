@@ -34,11 +34,10 @@ import java.util.concurrent.RejectedExecutionException
  * Standard Android AccessibilityService used transparently under this app's own
  * class/package identity.
  *
- * WeChat runs in user-active mode: accessibility events keep the overlay ready,
- * but no WeChat node tree, view id, OCR or model request is inspected merely
- * because a message/window event arrived. A user tap is required before one
- * best-effort read is attempted. If standard nodes are unavailable, clipboard
- * and on-device OCR remain explicit alternatives.
+ * WeChat is deliberately excluded from this service's accessibility event
+ * subscription and has no app-specific node adapter. The persistent overlay is
+ * the entry point; clipboard text and optional on-device OCR are explicit user
+ * actions. No WeChat resource id or internal node tree is used.
  *
  * The service never sends a message. Formal WeChat mode also never performs
  * ACTION_SET_TEXT / ACTION_PASTE / ACTION_CLICK; candidates are copied and the
@@ -52,7 +51,7 @@ open class ChatCaptureService : AccessibilityService() {
     private val maintenanceWorker = Executors.newSingleThreadExecutor()
 
     /** Adapted chat apps, keyed by package name. */
-    private val adapters = listOf(WeChatAdapter(), QQAdapter(), XAdapter(), FeishuAdapter()).associateBy { it.pkg }
+    private val adapters = listOf(QQAdapter(), XAdapter(), FeishuAdapter()).associateBy { it.pkg }
 
     /** Submit to the worker, ignoring rejection after the service is torn down
      *  (a stale overlay callback must never crash the process). */
@@ -193,20 +192,6 @@ open class ChatCaptureService : AccessibilityService() {
         }
 
         val type = event.eventType
-        val eventPkg = event.packageName?.toString()
-
-        // WeChat formal mode is user-active by design. Do not touch
-        // rootInActiveWindow, view IDs, message nodes, OCR or model APIs merely
-        // because WeChat emitted an accessibility event. A user tap on the
-        // overlay is the boundary that may initiate one explicit read.
-        if (eventPkg == WECHAT_PKG) {
-            cloneUserMode = false
-            foregroundPkg = WECHAT_PKG
-            if (activePkg != WECHAT_PKG) invalidateAnalysis()
-            currentSnapshot = null
-            main.post { overlay?.showWeChatActiveMode() }
-            return
-        }
 
         // Decide "did we leave the chat app" from the REAL active window, not the
         // event's package. The event package can be an IME (e.g. com.tencent.wetype)
@@ -307,7 +292,6 @@ open class ChatCaptureService : AccessibilityService() {
     private fun maybeCapture(trigger: CaptureTrigger) {
         val root = rootInActiveWindow ?: return
         val pkg = root.packageName?.toString()
-        if (pkg == WECHAT_PKG) return
         // Apps with no adapter are never handled automatically (v1.3 revision):
         // the only way in for them is the bubble menu's "截屏识别一次".
         val adapter = adapters[pkg] ?: return
@@ -632,8 +616,7 @@ open class ChatCaptureService : AccessibilityService() {
     }
 
     /**
-     * Explicit one-shot window read initiated by the user. This is the only path
-     * that attempts WeChat AccessibilityNodeInfo extraction in formal mode.
+     * Explicit one-shot standard-node read for supported non-WeChat apps.
      * Failure never falls through to screenshot automatically.
      */
     private fun manualAnalyzeCurrentWindow() {
@@ -651,8 +634,7 @@ open class ChatCaptureService : AccessibilityService() {
         val raw = runCatching { adapter.extract(root, resources) }.getOrNull()
         if (raw == null || raw.messages.isEmpty()) {
             overlay?.showCaptureOnly(
-                if (pkg == WECHAT_PKG) "微信当前控件不可读，可选剪贴板或本地 OCR"
-                else "当前页面控件不可读"
+                "当前页面控件不可读，可选剪贴板或本地 OCR"
             )
             return
         }

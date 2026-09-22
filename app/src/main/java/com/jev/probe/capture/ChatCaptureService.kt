@@ -21,6 +21,7 @@ import com.jev.probe.core.RankedReply
 import com.jev.probe.core.kb.ContextBuilder
 import com.jev.probe.core.kb.HistoryCaptureHint
 import com.jev.probe.core.kb.KbStore
+import com.jev.probe.jev.ContactSummaryManager
 import com.jev.probe.jev.JevClient
 import com.jev.probe.jev.VisionClient
 import com.jev.probe.overlay.OverlayController
@@ -443,6 +444,27 @@ open class ChatCaptureService : AccessibilityService() {
                     pendingRanked = ranked
                     if (judgmentReady && !judgmentOk) analyzing = false
                     publishRepliesIfReady()
+                }
+
+                // Rolling contact summary is opt-in, low-frequency and off the
+                // critical UI path. Only a healthy reply route and a real newest
+                // incoming screen may trigger it; failure never affects analysis.
+                if (
+                    replyError == null && ranked.isNotEmpty() &&
+                    historyHint == HistoryCaptureHint.NEWEST_SCREEN &&
+                    sessionStillCurrent(session)
+                ) {
+                    ctx?.contact?.let { contact ->
+                        runCatching {
+                            ContactSummaryManager.maybeRefresh(
+                                KbStore.get(this),
+                                contact,
+                                prefs
+                            )
+                        }.onFailure { e ->
+                            Log.w(TAG, "contact summary failed: ${e.javaClass.simpleName}")
+                        }
+                    }
                 }
             }
         }

@@ -58,6 +58,9 @@ class OverlayController(private val ctx: Context) {
     /** Bubble menu → one manual screenshot + OCR of whatever app is open. */
     var onOcrCapture: (() -> Unit)? = null
 
+    /** Bubble menu → analyze text the user explicitly copied. */
+    var onAnalyzeClipboard: (() -> Unit)? = null
+
     /** How much knowledge context the last analysis actually used. */
     private var ctxNotes = 0
     private var ctxHistory = 0
@@ -268,7 +271,8 @@ class OverlayController(private val ctx: Context) {
             setPadding(dp(4), dp(4), dp(4), dp(4))
             layoutParams = FrameLayout.LayoutParams(dp(196), ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(56) }
         }
-        menu.addView(menuItem("截屏识别一次") { root?.removeView(menu); onOcrCapture?.invoke() })
+        menu.addView(menuItem("分析剪贴板") { root?.removeView(menu); onAnalyzeClipboard?.invoke() })
+        menu.addView(menuItem("本地截屏识别（可选）") { root?.removeView(menu); onOcrCapture?.invoke() })
         menu.addView(menuItem("把当前会话存为联系人") { onSaveContact?.invoke(); root?.removeView(menu) })
         menu.addView(menuItem("打开设置") { openSettings(); root?.removeView(menu) })
         menu.addView(menuItem("隐藏助手（本次）") { hide() })
@@ -314,10 +318,9 @@ class OverlayController(private val ctx: Context) {
     // ------------------------------------------------------------ public API
 
     /**
-     * Compatibility mode for a visible app/window whose accessibility tree is
-     * unavailable to this service (notably vivo clone-user apps). Never reuse a
-     * prior conversation snapshot here: the only safe action is a fresh screen
-     * capture initiated by the user.
+     * Safe compatibility mode for a window whose accessibility tree is not
+     * available (notably an app clone in another Android user). Nothing is read
+     * automatically. The user chooses clipboard analysis or local screenshot OCR.
      */
     fun showCaptureOnly(note: String? = null) {
         resetForNewConversation()
@@ -327,7 +330,21 @@ class OverlayController(private val ctx: Context) {
         note?.takeIf { it.isNotBlank() }?.let {
             views.add(line(it, "#5C6560", 12f, true))
         }
-        views.add(bigButton("截屏识别当前对话") { onOcrCapture?.invoke() })
+        views.add(bigButton("分析剪贴板") { onAnalyzeClipboard?.invoke() })
+        views.add(secondaryButton("本地截屏识别（无需图像 Key）") { onOcrCapture?.invoke() })
+        setContent(views)
+    }
+
+    /** WeChat safe mode: one-shot read only after a user tap; no passive scan. */
+    fun showWeChatActiveMode() {
+        resetForNewConversation()
+        ensureRoot()
+        bubble?.alpha = 0.75f
+        val views = ArrayList<View>()
+        views.add(line("微信安全模式 · 不后台读取", "#5C6560", 12f, true))
+        views.add(bigButton("分析当前对话") { onManualAnalyze?.invoke() })
+        views.add(secondaryButton("分析剪贴板") { onAnalyzeClipboard?.invoke() })
+        views.add(secondaryButton("本地截屏识别（可选）") { onOcrCapture?.invoke() })
         setContent(views)
     }
 
@@ -375,6 +392,17 @@ class OverlayController(private val ctx: Context) {
         setOnClickListener { onClick() }
     }
 
+    private fun secondaryButton(label: String, onClick: () -> Unit) = TextView(ctx).apply {
+        text = label; textSize = 13f; gravity = Gravity.CENTER
+        setTextColor(Guofeng.JADE_DEEP); typeface = Guofeng.sans(true)
+        background = card(14, Guofeng.CARD, stroke = true)
+        setPadding(dp(12), dp(10), dp(12), dp(10))
+        layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dp(7) }
+        setOnClickListener { onClick() }
+    }
+
     fun showLoading() {
         ensureRoot(); bubble?.alpha = 1f
         ctxNotes = 0; ctxHistory = 0   // counts for the round that is starting
@@ -418,6 +446,7 @@ class OverlayController(private val ctx: Context) {
         ranked: List<RankedReply>,
         error: String? = null,
         sorting: Boolean = false,
+        allowDirectFill: Boolean = true,
         onFill: (String) -> Unit
     ) {
         lastFill = onFill
@@ -494,11 +523,12 @@ class OverlayController(private val ctx: Context) {
                     i + 1,
                     r.text,
                     if (replySorting || rankingUnavailable) null else (r.prob * 100).roundToInt(),
+                    allowDirectFill,
                     fill
                 ))
             }
             if (rankingUnavailable) {
-                views.add(hint("排序失败，先按生成顺序显示；候选仍可复制或填入"))
+                views.add(hint("排序失败，先按生成顺序显示；候选仍可复制"))
             } else if (a.rankedReplies.isEmpty()) {
                 val msg = replyError?.let { "回复接口出错：$it" } ?: "（未生成候选回复）"
                 views.add(hint(msg))
@@ -529,7 +559,7 @@ class OverlayController(private val ctx: Context) {
         return row
     }
 
-    private fun replyCard(rank: Int, text: String, pct: Int?, onFill: (String) -> Unit): View {
+    private fun replyCard(rank: Int, text: String, pct: Int?, allowDirectFill: Boolean, onFill: (String) -> Unit): View {
         val top = pct != null && rank == 1
         val cardBg = if (top) Guofeng.JADE_PALE else Guofeng.CARD_SOFT
         val c = LinearLayout(ctx).apply {
@@ -554,9 +584,17 @@ class OverlayController(private val ctx: Context) {
             setPadding(0, dp(3), 0, dp(7)); setLineSpacing(dp(2).toFloat(), 1f)
         })
         val btns = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
-        btns.addView(pill("复制", false) { copy(text) })
-        // Fill, then collapse so the input box + keyboard are visible to review/send.
-        btns.addView(pill("填入", true) { android.util.Log.d("JEVASSIST", "overlay: fill tapped"); onFill(text); if (expanded) toggle() })
+        btns.addView(pill("复制", !allowDirectFill) { copy(text) })
+        if (allowDirectFill) {
+            // Non-WeChat compatibility path only. WeChat formal mode never
+            // performs Accessibility UI writes; an IME integration will replace
+            // this path for safe direct insertion later.
+            btns.addView(pill("填入", true) {
+                android.util.Log.d("JEVASSIST", "overlay: fill tapped")
+                onFill(text)
+                if (expanded) toggle()
+            })
+        }
         c.addView(btns)
         return c
     }

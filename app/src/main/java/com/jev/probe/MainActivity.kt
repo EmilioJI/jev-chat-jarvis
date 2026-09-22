@@ -10,6 +10,7 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.jev.probe.core.Prefs
 import com.jev.probe.ui.Guofeng
@@ -72,10 +73,10 @@ class MainActivity : AppCompatActivity() {
         container.addView(permissionCard(
             mark = "读",
             title = "无障碍权限",
-            desc = "读取当前聊天窗口里你本来就能看到的文字",
+            desc = "读取当前可见聊天内容；开启前会单独说明数据访问与用途",
             granted = a11y
         ) {
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            showAccessibilityDisclosure()
         })
         container.addView(permissionCard(
             mark = "浮",
@@ -448,6 +449,49 @@ class MainActivity : AppCompatActivity() {
         textSize = size
         setTextColor(color)
         typeface = if (serif) Guofeng.serif(bold) else Guofeng.sans(bold)
+    }
+
+    /**
+     * Prominent AccessibilityService disclosure shown immediately before the
+     * system permission screen. It is intentionally separate from every other
+     * permission/privacy disclosure and requires an affirmative action.
+     */
+    private fun showAccessibilityDisclosure() {
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), dp(8))
+
+            addView(text(
+                "Jev 聊天助手需要无障碍访问，才能在微信、QQ、X、飞书等聊天界面中读取当前屏幕上你本来就能看到的聊天内容。",
+                14f,
+                Guofeng.INK,
+                bold = true
+            ))
+            addView(text(
+                "开启后，服务可能访问：\n" +
+                    "• 当前活动应用和窗口中的可见文字、控件结构与会话标题；\n" +
+                    "• 在控件树读不到正文时，按你的 OCR 设置截取当前聊天窗口。默认 ML Kit OCR 完全在本机；只有你明确选择“视觉 API”后，才会把裁剪后的聊天区域发送到你配置的视觉服务商。\n\n" +
+                    "用途：这些内容只用于识别当前对话、生成意图判断和候选回复，并在你主动开启关联上下文时写入本机历史。分析时，聊天文本会发送给你在设置中选择的判断/回复模型服务商。\n\n" +
+                    "Jev 不会读取聊天数据库，不会自动点击发送；候选回复即使填入输入框，也仍由你检查并手动发送。你可以随时在系统无障碍设置中关闭此权限。",
+                13f,
+                Guofeng.INK_SOFT
+            ).apply { setPadding(0, dp(12), 0, 0) })
+        }
+
+        val scroll = ScrollView(this).apply {
+            isVerticalScrollBarEnabled = true
+            addView(content)
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("无障碍访问披露")
+            .setView(scroll)
+            .setNegativeButton("不同意") { dialog, _ -> dialog.dismiss() }
+            .setPositiveButton("同意并前往系统设置") { _, _ ->
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            }
+            .setCancelable(false)
+            .show()
     }
 
     private fun isA11yEnabled(): Boolean {

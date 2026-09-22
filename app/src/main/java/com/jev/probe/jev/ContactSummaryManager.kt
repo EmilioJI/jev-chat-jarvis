@@ -2,6 +2,7 @@ package com.jev.probe.jev
 
 import com.jev.probe.core.Prefs
 import com.jev.probe.core.kb.Contact
+import com.jev.probe.core.kb.HistoryTime
 import com.jev.probe.core.kb.KbStore
 import java.util.concurrent.ConcurrentHashMap
 
@@ -51,10 +52,12 @@ object ContactSummaryManager {
         if (now - lastAttempt < RETRY_COOLDOWN_MS) return false
         lastAttemptAt[contact.id] = now
 
+        val nowForSummary = System.currentTimeMillis()
         val selected = ArrayList<String>()
         var chars = 0
         for (entry in log.takeLast(MAX_INPUT_LINES).asReversed()) {
-            val line = (if (entry.side == "me") "我：" else "对方：") + entry.text.trim()
+            val line = HistoryTime.stamp(entry.ts, nowForSummary) + " " +
+                (if (entry.side == "me") "我：" else "对方：") + entry.text.trim()
             if (line.isBlank()) continue
             if (selected.isNotEmpty() && chars + line.length + 1 > MAX_INPUT_CHARS) break
             selected.add(line)
@@ -68,7 +71,8 @@ object ContactSummaryManager {
                 append("已有摘要（仅作旧背景，需根据新聊天修正）：\n")
                 append(contact.autoSummary.trim()).append("\n\n")
             }
-            append("最近聊天记录：\n")
+            append(HistoryTime.modelGuidance(nowForSummary)).append("\n\n")
+            append("最近聊天记录（时间为本助手记录时间）：\n")
             selected.forEach { append(it).append('\n') }
         }
 

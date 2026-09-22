@@ -16,6 +16,7 @@ import com.jev.probe.core.BubbleRect
 import com.jev.probe.core.ChatSnapshot
 import com.jev.probe.core.Msg
 import com.jev.probe.core.Prefs
+import com.jev.probe.core.kb.ChatContext
 import com.jev.probe.core.kb.ContextBuilder
 import com.jev.probe.core.kb.KbStore
 import com.jev.probe.jev.JevClient
@@ -247,7 +248,6 @@ open class ChatCaptureService : AccessibilityService() {
         analyzing = true
         main.post { overlay?.showLoading(); overlay?.setNote(snapshot.note) }
         val client = JevClient(prefs)
-        val rel = prefs.relationship
         val pkg = activePkg ?: ""
         // Knowledge context first (local file reads only, a few ms), then the two
         // network calls in parallel on the pool. A failure here must never stop
@@ -258,6 +258,7 @@ open class ChatCaptureService : AccessibilityService() {
             } catch (e: Exception) {
                 Log.w(TAG, "context build failed: ${e.javaClass.simpleName}"); null
             }
+            val rel = effectiveRelationship(snapshot, ctx)
             main.post { overlay?.setContextInfo(ctx?.notes?.size ?: 0, ctx?.history?.size ?: 0) }
 
             // Judgment is fast (~1s) — show it immediately.
@@ -280,6 +281,28 @@ open class ChatCaptureService : AccessibilityService() {
                     overlay?.showReplies(ranked, replyError) { text -> fillInput(text) }
                 }
             }
+        }
+    }
+
+    /**
+     * Build the relationship string for this exact conversation.
+     *
+     * Identity comes from the current window title (WeChat remark/nickname,
+     * QQ title, group name, etc.) or the matched contact's canonical name.
+     * Relationship semantics are never guessed from a nickname: a per-contact
+     * relationship wins, then the optional global fallback, otherwise it stays
+     * explicitly unknown.
+     */
+    private fun effectiveRelationship(snapshot: ChatSnapshot, ctx: ChatContext?): String {
+        val display = ctx?.contact?.name?.trim().orEmpty()
+            .ifBlank { KbStore.displayName(snapshot.title) }
+        val relation = ctx?.contact?.relationship?.trim().orEmpty()
+            .ifBlank { prefs.relationship.trim() }
+
+        return buildString {
+            if (display.isNotBlank()) append("当前会话名称/备注：").append(display).append('；')
+            if (relation.isNotBlank()) append("与我的关系：").append(relation)
+            else append("与当前会话对象的关系未设置")
         }
     }
 

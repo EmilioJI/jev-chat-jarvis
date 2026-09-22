@@ -433,7 +433,7 @@ open class ChatCaptureService : AccessibilityService() {
         return snapshot
     }
 
-    /** Mark every older analysis/fill callback stale and cancel any pending debounce. */
+    /** Mark every older analysis callback stale and cancel any pending debounce. */
     private fun invalidateAnalysis() {
         analysisEpoch++
         analyzing = false
@@ -447,36 +447,6 @@ open class ChatCaptureService : AccessibilityService() {
         return session.epoch == analysisEpoch &&
             session.pkg == (activePkg ?: "") &&
             session.signature == current.signature()
-    }
-
-    /**
-     * Re-read the active window before writing text. This is stricter than the
-     * overlay-generation check: even if the service has not processed the latest
-     * accessibility event yet, a different visible conversation blocks the fill.
-     */
-    private fun activeWindowMatches(session: AnalysisSession): Boolean {
-        if (!sessionStillCurrent(session)) return false
-        val root = rootInActiveWindow ?: return false
-        val pkg = root.packageName?.toString() ?: return false
-        if (pkg != session.pkg) return false
-
-        val adapter = adapters[pkg]
-        if (adapter != null) {
-            val now = runCatching { adapter.extract(root, resources) }.getOrNull() ?: return false
-            if (now.messages.isNotEmpty() && messageSignature(now) != session.messageSignature) return false
-            val nowTitle = now.title
-            if (!nowTitle.isNullOrBlank() && !session.title.isNullOrBlank() &&
-                !isTransientTitle(nowTitle) && nowTitle != session.title) return false
-        } else {
-            val nowTitle = runCatching {
-                findTitleInActionBar(
-                    root, Int.MAX_VALUE, resources.displayMetrics.widthPixels,
-                    resources, 0.15, 0.85)
-            }.getOrNull()
-            if (!nowTitle.isNullOrBlank() && !session.title.isNullOrBlank() &&
-                nowTitle != session.title) return false
-        }
-        return sessionStillCurrent(session)
     }
 
     /**
@@ -540,9 +510,8 @@ open class ChatCaptureService : AccessibilityService() {
             overlay?.showReplies(
                 ranked,
                 pendingReplyError,
-                sorting = !pendingRepliesFinal,
-                allowDirectFill = session.pkg != WECHAT_PKG
-            ) { text -> fillInput(text, session) }
+                sorting = !pendingRepliesFinal
+            )
         }
 
         // Knowledge context first (local file reads only, a few ms), then the two
@@ -1188,113 +1157,6 @@ open class ChatCaptureService : AccessibilityService() {
             overlay?.setNote(snapshot.note)
             overlay?.showIdle(snapshot.title)
         }
-    }
-
-    /** Fill the chat input box with the chosen reply (never sends). */
-    private fun fillInput(text: String, session: AnalysisSession) {
-        if (!activeWindowMatches(session)) {
-            overlay?.toast("会话已变化，请重新分析")
-            return
-        }
-
-        submit fillTask@{
-            // Re-check on the worker immediately before any write. The user may
-            // have switched chats after tapping the overlay but before this task ran.
-            if (!activeWindowMatches(session)) {
-                main.post { overlay?.toast("会话已变化，请重新分析") }
-                return@fillTask
-            }
-
-            // Fast path: SET_TEXT works when the box already has input focus and no
-            // IME composing session is active.
-            var ok = trySetText(text)
-            if (!ok) {
-                // Otherwise focus the box (pops the keyboard) and retry SET_TEXT;
-                // if the IME composing region still swallows it (WeChat), PASTE from
-                // the clipboard. Re-check after the keyboard transition because it
-                // is another window/event boundary where the visible chat can change.
-                val edit = rootInActiveWindow?.let { findEditable(it) }
-                if (edit != null) {
-                    edit.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                    Thread.sleep(300)
-                    if (!activeWindowMatches(session)) {
-                        main.post { overlay?.toast("会话已变化，请重新分析") }
-                        return@fillTask
-                    }
-                    ok = trySetText(text)
-                    if (!ok) {
-                        if (!activeWindowMatches(session)) {
-                            main.post { overlay?.toast("会话已变化，请重新分析") }
-                            return@fillTask
-                        }
-                        copyToClipboard(text)
-                        val focused = rootInActiveWindow?.let { findEditable(it) } ?: edit
-                        setTextRaw(focused, "")
-                        val pasted = focused.performAction(AccessibilityNodeInfo.ACTION_PASTE)
-                        Thread.sleep(150)
-                        val after = readInput()
-                        ok = (after != null && after.contains(text)) || (pasted && after == null)
-                        Log.i(TAG, "fill: paste=$pasted readback=${after?.length ?: -1}")
-                    }
-                }
-            }
-            main.post {
-                if (!sessionStillCurrent(session)) {
-                    overlay?.toast("会话已变化，请检查输入框")
-                } else if (ok) {
-                    overlay?.toast("已填入，确认后自己发送")
-                } else {
-                    copyToClipboard(text)
-                    overlay?.toast("已复制，长按输入框粘贴")
-                }
-            }
-        }
-    }
-
-    /** Set text on the chat input box, verifying it actually took. */
-    private fun trySetText(text: String): Boolean {
-        val edit = rootInActiveWindow?.let { findEditable(it) } ?: return false
-        if (!setTextRaw(edit, text)) return false
-        // SET_TEXT can report success without filling an unfocused box; verify.
-        // Read back through refresh() — the node cache can still hold the old
-        // (empty) text right after the action, which made Feishu look like a
-        // failure and triggered a second PASTE on top.
-        Thread.sleep(150)
-        val after = readInput()
-        Log.i(TAG, "fill: setText readback=${after?.length ?: -1} want=${text.length}")
-        return after == text
-    }
-
-    private fun setTextRaw(edit: AccessibilityNodeInfo, text: String): Boolean {
-        val args = Bundle().apply {
-            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
-        }
-        return edit.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-    }
-
-    /** Current text of the input box, fetched fresh (bypassing the node cache). */
-    private fun readInput(): String? {
-        val edit = rootInActiveWindow?.let { findEditable(it) } ?: return null
-        runCatching { edit.refresh() }
-        return edit.text?.toString()
-    }
-
-    private fun findEditable(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        val stack = ArrayDeque<AccessibilityNodeInfo>()
-        stack.addLast(root)
-        var guard = 0
-        while (stack.isNotEmpty() && guard < 5000) {
-            guard++
-            val node = stack.removeLast()
-            if (node.isEditable) return node
-            for (i in node.childCount - 1 downTo 0) node.getChild(i)?.let { stack.addLast(it) }
-        }
-        return null
-    }
-
-    private fun copyToClipboard(text: String) {
-        val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
-        cm.setPrimaryClip(android.content.ClipData.newPlainText("jev_reply", text))
     }
 
     override fun onInterrupt() {}

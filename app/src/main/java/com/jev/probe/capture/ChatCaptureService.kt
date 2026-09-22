@@ -18,6 +18,7 @@ import com.jev.probe.core.Msg
 import com.jev.probe.core.Prefs
 import com.jev.probe.core.RankedReply
 import com.jev.probe.core.kb.ContextBuilder
+import com.jev.probe.core.kb.HistoryCaptureHint
 import com.jev.probe.core.kb.KbStore
 import com.jev.probe.jev.JevClient
 import com.jev.probe.overlay.OverlayController
@@ -78,12 +79,21 @@ open class ChatCaptureService : AccessibilityService() {
         val messageKeys: Set<String>
     )
 
+    /** Why a screen was re-read. Only CONTENT_CHANGED may auto-analyze. */
+    private enum class CaptureTrigger {
+        CONTENT_CHANGED,
+        VIEW_SCROLLED,
+        WINDOW_CHANGED,
+        RESTORE
+    }
+
     /** Last known-good title per package, tied to recent message evidence.
      *  A transient title from a newly opened conversation must never inherit the
      *  previous conversation's contact/title just because the package is equal. */
     private val lastGoodTitle: MutableMap<String, TitleEvidence> = HashMap()
     private val debounce = Runnable { runAnalysis() }
     private var pendingSnapshot: ChatSnapshot? = null
+    private var pendingHistoryHint: HistoryCaptureHint = HistoryCaptureHint.CONSERVATIVE
     @Volatile private var currentSnapshot: ChatSnapshot? = null
     private var foregroundPkg: String? = null
 
@@ -109,6 +119,7 @@ open class ChatCaptureService : AccessibilityService() {
             currentSnapshot?.let {
                 invalidateAnalysis()
                 pendingSnapshot = it
+                pendingHistoryHint = HistoryCaptureHint.CONSERVATIVE
                 runAnalysis()
             }
         }
@@ -138,7 +149,9 @@ open class ChatCaptureService : AccessibilityService() {
         // HyperOS may kill and restart us. On (re)connect, proactively re-show the
         // bubble for whatever chat is already open, so it comes back on its own
         // instead of waiting for the user to scroll.
-        main.postDelayed({ if (prefs.enabled) runCatching { maybeCapture() } }, 900)
+        main.postDelayed({
+            if (prefs.enabled) runCatching { maybeCapture(CaptureTrigger.RESTORE) }
+        }, 900)
         Log.i(TAG, "capture service connected")
     }
 
@@ -182,13 +195,16 @@ open class ChatCaptureService : AccessibilityService() {
         }
 
         when (type) {
-            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
-            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
-            AccessibilityEvent.TYPE_VIEW_SCROLLED -> maybeCapture()
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ->
+                maybeCapture(CaptureTrigger.WINDOW_CHANGED)
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ->
+                maybeCapture(CaptureTrigger.CONTENT_CHANGED)
+            AccessibilityEvent.TYPE_VIEW_SCROLLED ->
+                maybeCapture(CaptureTrigger.VIEW_SCROLLED)
         }
     }
 
-    private fun maybeCapture() {
+    private fun maybeCapture(trigger: CaptureTrigger) {
         val root = rootInActiveWindow ?: return
         val pkg = root.packageName?.toString()
         // Apps with no adapter are never handled automatically (v1.3 revision):
@@ -215,7 +231,13 @@ open class ChatCaptureService : AccessibilityService() {
                 val sig = ocrSignature(pkg ?: "", snapshot.title, snapshot.bubbleRects)
                 if (sig == lastOcrSignature && overlay?.isShowing() == true) return
                 lastOcrSignature = sig
-                ocrCapture(snapshot.title, snapshot.bubbleRects, pkg ?: "", manual = false)
+                ocrCapture(
+                    snapshot.title,
+                    snapshot.bubbleRects,
+                    pkg ?: "",
+                    manual = false,
+                    autoEligible = trigger == CaptureTrigger.CONTENT_CHANGED
+                )
             }
             return
         }
@@ -241,13 +263,17 @@ open class ChatCaptureService : AccessibilityService() {
         Log.d(TAG, "snapshot[$pkg] title.len=${snapshot.title?.length ?: 0} n=${snapshot.messages.size} " +
             snapshot.messages.takeLast(6).joinToString(" | ") { "${it.side}:${it.text.length}" }) // metadata lengths only, never title/content
 
-        // Trigger only when the newest message is from the other person, and only
-        // if auto-analyze is on. Otherwise show the idle bubble (tap to analyze).
-        if (snapshot.latestFrom != "other" || !prefs.autoAnalyze) {
-            main.post { overlay?.showIdle(snapshot.title) }; return
+        // Auto-analysis is only eligible for a real CONTENT_CHANGED event.
+        // Scrolling, opening a window, or service restore may expose different
+        // messages but must never be mistaken for a new incoming message.
+        val autoEligible = trigger == CaptureTrigger.CONTENT_CHANGED
+        if (!autoEligible || snapshot.latestFrom != "other" || !prefs.autoAnalyze) {
+            main.post { overlay?.showIdle(snapshot.title) }
+            return
         }
 
         pendingSnapshot = snapshot
+        pendingHistoryHint = HistoryCaptureHint.NEWEST_SCREEN
         main.removeCallbacks(debounce)
         main.postDelayed(debounce, 800) // debounce bursts of content-changed events
     }
@@ -289,6 +315,7 @@ open class ChatCaptureService : AccessibilityService() {
         analysisEpoch++
         analyzing = false
         pendingSnapshot = null
+        pendingHistoryHint = HistoryCaptureHint.CONSERVATIVE
         main.removeCallbacks(debounce)
     }
 
@@ -331,6 +358,7 @@ open class ChatCaptureService : AccessibilityService() {
 
     private fun runAnalysis() {
         val snapshot = pendingSnapshot ?: return
+        val historyHint = pendingHistoryHint
         if (analyzing) return
         if (!prefs.hasKey()) { main.post { overlay?.showError("未设置判断接口密钥，去设置里填") }; return }
 
@@ -369,7 +397,7 @@ open class ChatCaptureService : AccessibilityService() {
         submit contextTask@{
             if (!sessionStillCurrent(session)) return@contextTask
             val ctx = try {
-                ContextBuilder.build(this, snapshot, pkg, prefs)
+                ContextBuilder.build(this, snapshot, pkg, prefs, historyHint)
             } catch (e: Exception) {
                 Log.w(TAG, "context build failed: ${e.javaClass.simpleName}"); null
             }
@@ -432,7 +460,7 @@ open class ChatCaptureService : AccessibilityService() {
         val title = root?.let {
             findTitleInActionBar(it, Int.MAX_VALUE, resources.displayMetrics.widthPixels, resources, 0.15, 0.85)
         }
-        ocrCapture(title, emptyList(), pkg, manual = true)
+        ocrCapture(title, emptyList(), pkg, manual = true, autoEligible = false)
     }
 
     /**
@@ -457,7 +485,13 @@ open class ChatCaptureService : AccessibilityService() {
      * where the bubbles are and who sent them, just not what they say) or OCR
      * the whole screen (everything else).
      */
-    private fun ocrCapture(treeTitle: String?, rects: List<BubbleRect>, pkg: String, manual: Boolean) {
+    private fun ocrCapture(
+        treeTitle: String?,
+        rects: List<BubbleRect>,
+        pkg: String,
+        manual: Boolean,
+        autoEligible: Boolean
+    ) {
         if (ocrBusy) return
         ocrBusy = true
         screenCapture.capture { res ->
@@ -484,15 +518,29 @@ open class ChatCaptureService : AccessibilityService() {
                         // rows next to the ones in the picture. Fall back to the
                         // old rects only if the tree gives us nothing now.
                         val fresh = rootInActiveWindow?.let { collectFeishuBubbleRects(it, resources) }
-                        ocrByRects(res.bitmap, if (fresh.isNullOrEmpty()) rects else fresh, treeTitle, pkg)
-                    } else ocrWholeScreen(res.bitmap, treeTitle, pkg, manual)
+                        ocrByRects(
+                            res.bitmap,
+                            if (fresh.isNullOrEmpty()) rects else fresh,
+                            treeTitle,
+                            pkg,
+                            autoEligible
+                        )
+                    } else {
+                        ocrWholeScreen(res.bitmap, treeTitle, pkg, manual, autoEligible)
+                    }
                 }
             }
         }
     }
 
     /** One OCR pass per bubble rectangle; each rect becomes exactly one message. */
-    private fun ocrByRects(bmp: Bitmap, rects: List<BubbleRect>, title: String?, pkg: String) {
+    private fun ocrByRects(
+        bmp: Bitmap,
+        rects: List<BubbleRect>,
+        title: String?,
+        pkg: String,
+        autoEligible: Boolean
+    ) {
         val sx = ocr.scaleX; val sy = ocr.scaleY
         // Screen -> bitmap: drop the window origin first. A window shot does not
         // start at (0,0) in split screen or when it excludes the status bar.
@@ -509,21 +557,37 @@ open class ChatCaptureService : AccessibilityService() {
                 remaining--
                 if (remaining == 0) {
                     runCatching { bmp.recycle() }
-                    finishOcrSnapshot(ChatSnapshot(title, out.filterNotNull()), pkg, manual = false)
+                    finishOcrSnapshot(
+                        ChatSnapshot(title, out.filterNotNull()),
+                        pkg,
+                        manual = false,
+                        autoEligible = autoEligible
+                    )
                 }
             }
         }
     }
 
     /** Whole screen minus the top bar and the input area, grouped by line gaps. */
-    private fun ocrWholeScreen(bmp: Bitmap, treeTitle: String?, pkg: String, manual: Boolean) {
+    private fun ocrWholeScreen(
+        bmp: Bitmap,
+        treeTitle: String?,
+        pkg: String,
+        manual: Boolean,
+        autoEligible: Boolean
+    ) {
         val region = Rect(0, (bmp.height * TOP_CROP).toInt(), bmp.width, (bmp.height * BOTTOM_CROP).toInt())
         ocr.recognize(bmp, region) { lines ->
             runCatching { bmp.recycle() }
             val msgs = groupOcrLines(lines)
             val title = treeTitle?.takeIf { it.isNotBlank() }
                 ?: lines.firstOrNull()?.text?.trim()?.take(24)
-            finishOcrSnapshot(ChatSnapshot(title, msgs, note = OCR_NOTE), pkg, manual)
+            finishOcrSnapshot(
+                ChatSnapshot(title, msgs, note = OCR_NOTE),
+                pkg,
+                manual,
+                autoEligible
+            )
         }
     }
 
@@ -571,7 +635,12 @@ open class ChatCaptureService : AccessibilityService() {
     }
 
     /** Shared tail of both OCR paths: dedupe, then analyze or park the bubble. */
-    private fun finishOcrSnapshot(snapshot: ChatSnapshot, pkg: String, manual: Boolean) {
+    private fun finishOcrSnapshot(
+        snapshot: ChatSnapshot,
+        pkg: String,
+        manual: Boolean,
+        autoEligible: Boolean
+    ) {
         ocrBusy = false
         // Counts only — OCR'd chat text never goes to logcat.
         Log.i(TAG, "ocr[$pkg] msgs=${snapshot.messages.size} manual=$manual")
@@ -595,9 +664,15 @@ open class ChatCaptureService : AccessibilityService() {
         overlay?.resetForNewConversation()
         lastSignature = sig
 
-        val auto = prefs.ocrAutoAnalyze && prefs.autoAnalyze && snapshot.latestFrom == "other"
+        val auto = autoEligible && prefs.ocrAutoAnalyze &&
+            prefs.autoAnalyze && snapshot.latestFrom == "other"
         if (manual || auto) {
             pendingSnapshot = snapshot
+            pendingHistoryHint = if (auto) {
+                HistoryCaptureHint.NEWEST_SCREEN
+            } else {
+                HistoryCaptureHint.CONSERVATIVE
+            }
             main.removeCallbacks(debounce)
             runAnalysis()
         } else {

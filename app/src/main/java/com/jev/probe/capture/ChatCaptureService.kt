@@ -12,6 +12,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import com.jev.probe.capture.ocr.MlKitOcr
 import com.jev.probe.capture.ocr.OcrLine
 import com.jev.probe.capture.ocr.ScreenCapture
+import com.jev.probe.capture.ocr.VisionDialogParser
 import com.jev.probe.core.BubbleRect
 import com.jev.probe.core.ChatSnapshot
 import com.jev.probe.core.Msg
@@ -21,6 +22,7 @@ import com.jev.probe.core.kb.ContextBuilder
 import com.jev.probe.core.kb.HistoryCaptureHint
 import com.jev.probe.core.kb.KbStore
 import com.jev.probe.jev.JevClient
+import com.jev.probe.jev.VisionClient
 import com.jev.probe.overlay.OverlayController
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
@@ -97,8 +99,9 @@ open class ChatCaptureService : AccessibilityService() {
     @Volatile private var currentSnapshot: ChatSnapshot? = null
     private var foregroundPkg: String? = null
 
-    // ---- OCR path (B stage). Everything here runs on the main thread: the
-    // screenshot callback and the ML Kit callback are both posted back to it.
+    // ---- OCR path. Screenshot and local ML Kit callbacks return on the main
+    // thread; remote Vision OCR explicitly moves JPEG encoding + network I/O to
+    // the worker pool and is only used when the user selects it.
     private val screenCapture by lazy {
         ScreenCapture(this,
             hideOverlay = { overlay?.setHiddenForShot(true) },
@@ -511,26 +514,210 @@ open class ChatCaptureService : AccessibilityService() {
                 is ScreenCapture.Result.Ok -> {
                     ocr.scaleX = res.scaleX; ocr.scaleY = res.scaleY
                     ocr.originX = res.originX; ocr.originY = res.originY
-                    if (rects.isNotEmpty() && !manual) {
-                        // Re-measure inside the callback. The rects handed in were
-                        // read before the 120ms overlay-hide wait and the shot
-                        // itself; one scroll tick in between and we would crop the
-                        // rows next to the ones in the picture. Fall back to the
-                        // old rects only if the tree gives us nothing now.
-                        val fresh = rootInActiveWindow?.let { collectFeishuBubbleRects(it, resources) }
-                        ocrByRects(
-                            res.bitmap,
-                            if (fresh.isNullOrEmpty()) rects else fresh,
+
+                    // Re-measure bubble rectangles after the overlay-hide wait and
+                    // the screenshot itself; one scroll tick can otherwise shift
+                    // every crop. The same fresh geometry is used by local and
+                    // remote OCR.
+                    val effectiveRects = if (rects.isNotEmpty() && !manual) {
+                        val fresh = rootInActiveWindow?.let {
+                            collectFeishuBubbleRects(it, resources)
+                        }
+                        if (fresh.isNullOrEmpty()) rects else fresh
+                    } else {
+                        rects
+                    }
+
+                    val visionSelected = prefs.ocrEngine == Prefs.OCR_VISION
+                    val visionReady = visionSelected &&
+                        prefs.effectiveVisionKey().isNotBlank() &&
+                        VisionClient.supportsVision(
+                            prefs.visionBaseUrl.ifBlank { Prefs.DEFAULT_VISION_BASE }
+                        )
+
+                    if (visionReady) {
+                        ocrByVision(
+                            res,
+                            effectiveRects,
                             treeTitle,
                             pkg,
+                            manual,
                             autoEligible
                         )
                     } else {
-                        ocrWholeScreen(res.bitmap, treeTitle, pkg, manual, autoEligible)
+                        if (manual && visionSelected) {
+                            overlay?.toast("视觉 OCR 未配置可用密钥，已使用本地识别")
+                        }
+                        runLocalOcr(
+                            res.bitmap,
+                            effectiveRects,
+                            treeTitle,
+                            pkg,
+                            manual,
+                            autoEligible
+                        )
                     }
                 }
             }
         }
+    }
+
+    /** Route one captured bitmap through the bundled on-device OCR path. */
+    private fun runLocalOcr(
+        bmp: Bitmap,
+        rects: List<BubbleRect>,
+        title: String?,
+        pkg: String,
+        manual: Boolean,
+        autoEligible: Boolean
+    ) {
+        if (rects.isNotEmpty() && !manual) {
+            ocrByRects(bmp, rects, title, pkg, autoEligible)
+        } else {
+            ocrWholeScreen(bmp, title, pkg, manual, autoEligible)
+        }
+    }
+
+    /**
+     * Remote vision OCR. Only the cropped chat-content region is encoded and
+     * uploaded. A failed request or malformed/unlabelled answer falls back to
+     * bundled ML Kit using the original bitmap, so remote OCR can never make the
+     * local fallback unavailable.
+     */
+    private fun ocrByVision(
+        res: ScreenCapture.Result.Ok,
+        rects: List<BubbleRect>,
+        title: String?,
+        pkg: String,
+        manual: Boolean,
+        autoEligible: Boolean
+    ) {
+        val original = res.bitmap
+        val crop = try {
+            cropVisionRegion(res, rects)
+        } catch (e: Exception) {
+            Log.w(TAG, "vision crop failed: ${e.javaClass.simpleName}")
+            null
+        }
+
+        if (crop == null) {
+            runLocalOcr(original, rects, title, pkg, manual, autoEligible)
+            return
+        }
+
+        try {
+            worker.execute {
+                var error: String? = null
+                val messages = try {
+                    val jpeg = VisionClient.encodeJpeg(crop, quality = 76)
+                    val raw = VisionClient(prefs).extractDialog(jpeg)
+                    VisionDialogParser.parse(raw)
+                } catch (e: Exception) {
+                    error = e.javaClass.simpleName
+                    Log.w(TAG, "vision ocr failed: ${e.javaClass.simpleName}")
+                    emptyList()
+                } finally {
+                    runCatching { crop.recycle() }
+                }
+
+                main.post {
+                    if (messages.isEmpty()) {
+                        if (manual) {
+                            overlay?.toast(
+                                if (error != null) "视觉 OCR 失败，已回退本地识别"
+                                else "视觉 OCR 未返回可靠说话人标签，已回退本地识别"
+                            )
+                        }
+                        runLocalOcr(
+                            original,
+                            rects,
+                            title,
+                            pkg,
+                            manual,
+                            autoEligible
+                        )
+                    } else {
+                        runCatching { original.recycle() }
+                        finishOcrSnapshot(
+                            ChatSnapshot(title, messages, note = VISION_OCR_NOTE),
+                            pkg,
+                            manual,
+                            autoEligible
+                        )
+                    }
+                }
+            }
+        } catch (_: RejectedExecutionException) {
+            runCatching { crop.recycle() }
+            runCatching { original.recycle() }
+            ocrBusy = false
+        }
+    }
+
+    /**
+     * Produce the smallest useful upload region.
+     *
+     * With known bubble rectangles (Feishu) upload their union plus a small
+     * margin. Without geometry, reuse the same middle-of-window crop as local
+     * whole-screen OCR, excluding the title/status area and input controls.
+     */
+    private fun cropVisionRegion(
+        res: ScreenCapture.Result.Ok,
+        rects: List<BubbleRect>
+    ): Bitmap? {
+        val bmp = res.bitmap
+        val bounds = Rect()
+
+        if (rects.isNotEmpty()) {
+            var hasRect = false
+            for (br in rects) {
+                val mapped = Rect(
+                    ((br.rect.left - res.originX) * res.scaleX).toInt(),
+                    ((br.rect.top - res.originY) * res.scaleY).toInt(),
+                    ((br.rect.right - res.originX) * res.scaleX).toInt(),
+                    ((br.rect.bottom - res.originY) * res.scaleY).toInt()
+                )
+                if (!mapped.intersect(0, 0, bmp.width, bmp.height)) continue
+                if (mapped.width() < 4 || mapped.height() < 4) continue
+                if (!hasRect) {
+                    bounds.set(mapped)
+                    hasRect = true
+                } else {
+                    bounds.union(mapped)
+                }
+            }
+            if (hasRect) {
+                val mx = (bmp.width * 0.025f).toInt().coerceAtLeast(8)
+                val my = (bmp.height * 0.015f).toInt().coerceAtLeast(8)
+                bounds.left = (bounds.left - mx).coerceAtLeast(0)
+                bounds.right = (bounds.right + mx).coerceAtMost(bmp.width)
+                bounds.top = (bounds.top - my).coerceAtLeast(0)
+                bounds.bottom = (bounds.bottom + my).coerceAtMost(bmp.height)
+            } else {
+                bounds.set(
+                    0,
+                    (bmp.height * TOP_CROP).toInt(),
+                    bmp.width,
+                    (bmp.height * BOTTOM_CROP).toInt()
+                )
+            }
+        } else {
+            bounds.set(
+                0,
+                (bmp.height * TOP_CROP).toInt(),
+                bmp.width,
+                (bmp.height * BOTTOM_CROP).toInt()
+            )
+        }
+
+        if (bounds.width() < 8 || bounds.height() < 8) return null
+        return Bitmap.createBitmap(
+            bmp,
+            bounds.left,
+            bounds.top,
+            bounds.width(),
+            bounds.height()
+        )
     }
 
     /** One OCR pass per bubble rectangle; each rect becomes exactly one message. */
@@ -812,6 +999,10 @@ open class ChatCaptureService : AccessibilityService() {
 
         /** Said on the panel whenever a snapshot came from flat-screen OCR. */
         private const val OCR_NOTE = "OCR 未分边，把全部消息当作对方所说"
+
+        /** Explicit privacy note for the opt-in remote vision OCR path. */
+        private const val VISION_OCR_NOTE =
+            "视觉 API OCR · 已上传裁剪后的聊天区域到你配置的视觉服务商"
 
         private val PURE_TIME = Regex("""\d{1,2}[:：]\d{2}""")
         private val TAIL_TIME = Regex("""\d{1,2}[:：]\d{2}$""")

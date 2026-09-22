@@ -14,10 +14,12 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import com.jev.probe.R
 import com.jev.probe.core.Analysis
 import com.jev.probe.core.ChatSnapshot
 import com.jev.probe.core.Prefs
@@ -40,7 +42,7 @@ class OverlayController(private val ctx: Context) {
     private val wm = ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val prefs = Prefs(ctx)
     private var root: FrameLayout? = null
-    private var bubble: TextView? = null
+    private var bubble: ImageView? = null
     private var dangerDot: View? = null
     private var panel: LinearLayout? = null
     private var contentBox: LinearLayout? = null
@@ -131,22 +133,17 @@ class OverlayController(private val ctx: Context) {
         val wrap = FrameLayout(ctx).apply {
             layoutParams = FrameLayout.LayoutParams(dp(52), dp(52))
         }
-        val b = TextView(ctx).apply {
-            text = "Jev"
-            setTextColor(Guofeng.CARD)
-            gravity = Gravity.CENTER
-            textSize = 13f
-            typeface = Guofeng.serif(true)
+        val b = ImageView(ctx).apply {
+            setImageResource(R.drawable.zhiyan_mascot_avatar)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            contentDescription = "小书童·知言"
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
-                setColor(Color.argb(
-                    242,
-                    Color.red(Guofeng.JADE_DEEP),
-                    Color.green(Guofeng.JADE_DEEP),
-                    Color.blue(Guofeng.JADE_DEEP)
-                ))
-                setStroke(dp(1), Guofeng.BORDER_JADE)
+                setColor(Guofeng.CARD)
+                setStroke(dp(2), Guofeng.BORDER_JADE)
             }
+            setPadding(dp(2), dp(2), dp(2), dp(2))
+            clipToOutline = true
             layoutParams = FrameLayout.LayoutParams(dp(52), dp(52))
         }
         val dot = View(ctx).apply {
@@ -176,7 +173,7 @@ class OverlayController(private val ctx: Context) {
         // Header
         val header = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         header.addView(TextView(ctx).apply {
-            text = "Jev · 对话研判"; setTextColor(Guofeng.JADE_DEEP); textSize = 15f
+            text = "小书童·知言"; setTextColor(Guofeng.JADE_DEEP); textSize = 15f
             typeface = Guofeng.serif(true)
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })

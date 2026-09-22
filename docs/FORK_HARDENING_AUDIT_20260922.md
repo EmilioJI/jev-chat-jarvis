@@ -128,14 +128,22 @@ The product is a general chat assistant, not primarily a disability-access tool.
 
 This is deliberately not changed in this pass because it can alter platform/WeChat behavior and requires a distribution decision.
 
-### Android 16 / target API 36
+### Android 16 / target API 36 — RESOLVED IN BUILD GATE
 
-Current build:
+The fork now builds against Android 16 with a pinned toolchain:
 
-- `compileSdk = 35`
-- `targetSdk = 35`
+- `compileSdk = 36`
+- `targetSdk = 36`
+- AGP `8.10.1`
+- Gradle Wrapper `8.11.1`
+- JDK 17
+- Build Tools `35.0.0`
 
-For Google Play submissions after 2026-08-31, new apps and app updates must target API 36. Upgrade as a tested build-chain migration, not as a one-line edit: AGP, Gradle, compileSdk, targetSdk, foreground-service behavior, notification behavior and accessibility behavior all need verification.
+Run #20 completed `:app:assembleDebug` successfully and the APK badging gate asserted both `targetSdkVersion='36'` and `compileSdkVersion='36'`.
+
+The migration also fixed a pre-existing cross-platform Gradle issue: the legacy Windows release-signing fallback `H:/android/keys/jev-release.properties` is now evaluated only on Windows; Linux/CI uses only an explicit `JEV_KEYSTORE_PROPS`.
+
+Runtime compatibility on Android 16 still belongs to the real-device gate, especially AccessibilityService / screenshot / overlay behavior.
 
 ### Persistent chat-history ambiguity — RESOLVED
 

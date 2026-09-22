@@ -41,11 +41,11 @@ jobs:
           test -f "$ANDROID_HOME/platforms/android-36/android.jar"
           test -x "$ANDROID_HOME/build-tools/35.0.0/aapt"
 
-      - name: Build debug APK
+      - name: Unit tests and debug APK
         shell: bash
         run: |
           set -euo pipefail
-          bash ./gradlew :app:assembleDebug --no-daemon --stacktrace
+          bash ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace
 
       - name: Verify APK
         shell: bash

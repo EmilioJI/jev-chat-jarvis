@@ -1,3 +1,4 @@
+import java.io.File
 import java.io.FileInputStream
 import java.util.Properties
 
@@ -21,7 +22,7 @@ val releasePropsPath = System.getenv("JEV_KEYSTORE_PROPS")
 
 val releaseProps = Properties().apply {
     releasePropsPath?.let { path ->
-        val f = java.io.File(path)
+        val f = File(path)
         if (f.exists()) FileInputStream(f).use { load(it) }
     }
 }

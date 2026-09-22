@@ -68,8 +68,9 @@ object Guofeng {
 
     fun applyWindow(activity: Activity) {
         activity.window.decorView.background = InkPaperDrawable()
-        activity.window.statusBarColor = PAPER
-        activity.window.navigationBarColor = PAPER
+        // targetSdk 35 is edge-to-edge on Android 15+, where direct system-bar
+        // color setters are deprecated/ignored. Insets.kt keeps content clear of
+        // the bars; here we only request dark icons for the light paper surface.
         activity.window.insetsController?.setSystemBarsAppearance(
             WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
                 WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,

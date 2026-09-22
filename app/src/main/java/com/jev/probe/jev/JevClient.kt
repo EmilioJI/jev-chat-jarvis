@@ -25,14 +25,29 @@ class JevClient(prefs: Prefs) {
     fun judge(snapshot: ChatSnapshot, relationship: String, ctx: ChatContext? = null): Analysis =
         judgeEngine.judge(snapshot, relationship, ctx)
 
+    /** Draft 3 candidates on the reply route without waiting for ranking. */
+    fun draftCandidates(
+        snapshot: ChatSnapshot,
+        relationship: String,
+        ctx: ChatContext? = null
+    ): List<String> = replyClient.draft(snapshot, relationship, ctx)
+
+    /** Rank already-generated candidates on the judgment route. */
+    fun rankCandidates(
+        snapshot: ChatSnapshot,
+        relationship: String,
+        candidates: List<String>,
+        ctx: ChatContext? = null
+    ): List<RankedReply> = judgeEngine.rank(snapshot, relationship, candidates, ctx)
+
     /** Draft 3 candidates on the reply route, then rank them on the judge route. */
     fun draftAndRank(
         snapshot: ChatSnapshot,
         relationship: String,
         ctx: ChatContext? = null
     ): List<RankedReply> {
-        val candidates = replyClient.draft(snapshot, relationship, ctx)
-        return judgeEngine.rank(snapshot, relationship, candidates, ctx)
+        val candidates = draftCandidates(snapshot, relationship, ctx)
+        return rankCandidates(snapshot, relationship, candidates, ctx)
     }
 
     /** Judge + replies, sequential. Used by the settings connectivity test. */

@@ -160,16 +160,22 @@ class KbStore private constructor(context: Context) {
      *  - log is empty          → write all of S.
      *  - log tail matches the first k lines of S (k > 0) → the screen scrolled by
      *    (S.size - k) lines; append only that new tail.
-     *  - k is 0 and S shares nothing with P → the user scrolled up into old
-     *    messages we already hold; this round writes nothing rather than
-     *    duplicating history at the end of the file.
+     *  - k is 0 and S shares nothing with P → ambiguous:
+     *      - CONSERVATIVE: treat it as an older scrolled screen and write nothing.
+     *      - NEWEST_SCREEN: accept all of S as the new head after a long absence.
      *  - anything else         → append all of S.
      *
      * @param screenBatch true for a capture (the rules above). False for a
-     *        deliberate single-entry injection that is NOT a screen read, which
-     *        is appended as-is.
+     *        deliberate single-entry injection that is NOT a screen read.
+     * @param captureHint evidence about whether a zero-overlap capture is known
+     *        to be the newest screen; conservative by default.
      */
-    fun appendLog(contactId: String, entries: List<LogEntry>, screenBatch: Boolean = true): Boolean {
+    fun appendLog(
+        contactId: String,
+        entries: List<LogEntry>,
+        screenBatch: Boolean = true,
+        captureHint: HistoryCaptureHint = HistoryCaptureHint.CONSERVATIVE
+    ): Boolean {
         if (entries.isEmpty()) return true
         synchronized(lock) {
             val screen = entries.filter { it.text.isNotBlank() }
@@ -197,11 +203,18 @@ class KbStore private constructor(context: Context) {
                 !screenBatch -> screen
                 list.isEmpty() -> screen
                 k > 0 -> screen.drop(k)
-                // Nothing in common with the screen we last wrote → we are looking
-                // at older messages, not newer ones. Leave the log alone.
-                prev.isNotEmpty() && keys.none { it in prev } -> {
-                    Log.d(TAG, "appendLog contact=$contactId skipped: scrolled off the last screen")
+                // A zero-overlap screen is ambiguous. Manual reads and scrolls
+                // stay conservative; only a capture explicitly marked as the
+                // newest screen may advance history after a long absence.
+                prev.isNotEmpty() && keys.none { it in prev } &&
+                    captureHint == HistoryCaptureHint.CONSERVATIVE -> {
+                    Log.d(TAG, "appendLog contact=$contactId skipped: zero-overlap conservative screen")
                     return true
+                }
+                prev.isNotEmpty() && keys.none { it in prev } &&
+                    captureHint == HistoryCaptureHint.NEWEST_SCREEN -> {
+                    Log.d(TAG, "appendLog contact=$contactId accepted: zero-overlap newest screen")
+                    screen
                 }
                 else -> screen
             }

@@ -9,10 +9,10 @@
 - package: `com.jev.probe.guofeng`
 - label: `Jev聊天助手·国风验收`
 - `isAccessibilityTool=true`
-- source commit: `611037f412b45c98d756279ee61b74074e3410ea`
-- Run #24: `35718768943`
+- source commit: `f2537f6b61ff69c6341a8c7e31d04fa03c416f45`
+- Run #27: `35719705538`
 - APK SHA-256:
-  `d34a527dbce551150d91aad1c5b78c4da90f5e8cb88d1db98593a649791a8c5d`
+  `42bf16691c25240e2cf1b5ca9270d1dc773c316f3515dd93b07b097805c6fa54`
 
 ### B — Play 合规 A/B 实验候选
 

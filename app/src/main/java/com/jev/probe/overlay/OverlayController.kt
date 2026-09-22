@@ -456,7 +456,7 @@ class OverlayController(private val ctx: Context) {
         }
         row.addView(TextView(ctx).apply {
             text = "危险 $lvl/$max"
-            setTextColor(Color.WHITE); textSize = 13f; setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Guofeng.CARD); textSize = 13f; typeface = Guofeng.sans(true)
             setPadding(dp(10), dp(4), dp(10), dp(4))
             background = card(20, color)
         })
@@ -516,7 +516,7 @@ class OverlayController(private val ctx: Context) {
     private fun tintBubbleDanger(score: Double) {
         val color = dangerColor(score.roundToInt())
         dangerDot?.background = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL; setColor(color); setStroke(dp(2), Color.WHITE)
+            shape = GradientDrawable.OVAL; setColor(color); setStroke(dp(2), Guofeng.CARD)
         }
     }
 

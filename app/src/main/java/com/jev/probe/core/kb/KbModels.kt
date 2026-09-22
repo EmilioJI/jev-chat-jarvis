@@ -33,8 +33,10 @@ data class Contact(
     val apps: List<String> = emptyList(),
     val relationship: String = "",
     val notes: String = "",
-    /** Reserved for the (deferred) auto-summary; never written in v1.3. */
+    /** Model-generated rolling summary; created only after explicit opt-in. */
     val autoSummary: String = "",
+    /** Log size covered by [autoSummary], used to avoid re-summarizing every turn. */
+    val autoSummaryLogSize: Int = 0,
     val updatedAt: Long = System.currentTimeMillis()
 )
 

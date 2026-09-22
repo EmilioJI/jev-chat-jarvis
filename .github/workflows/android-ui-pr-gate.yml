@@ -59,14 +59,18 @@ jobs:
           test -x "$AAPT"
           BADGING="$("$AAPT" dump badging "$APK")"
           printf '%s\n' "$BADGING" | grep -F "package: name='com.jev.probe.guofeng'"
-          printf '%s\n' "$BADGING" | grep -F "application-label:'Jev聊天助手·国风验收'"
+          printf '%s\n' "$BADGING" | grep -F "application-label:'Jev聊天助手'"
           printf '%s\n' "$BADGING" | grep -F "targetSdkVersion:'36'"
           printf '%s\n' "$BADGING" | grep -F "compileSdkVersion='36'"
 
-      - name: Upload acceptance APK
+      # GitHub-hosted debug signing is ephemeral, so this artifact is CI-only
+      # and must not be used as an in-place update over a previously installed
+      # acceptance build. Upload only for an explicit manual acceptance run.
+      - name: Upload manual acceptance APK
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
-          name: jev-guofeng-debug-${{ github.event.pull_request.head.sha || github.sha }}
+          name: jev-ci-debug-${{ github.sha }}
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 1

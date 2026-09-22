@@ -107,10 +107,19 @@ class OverlayController(private val ctx: Context) {
     private fun ensureRoot() {
         if (root != null) return
         if (!canOverlay()) { android.util.Log.w("JEVASSIST", "overlay: canDrawOverlays=false"); return }
-        val overlayType = if (ctx is AccessibilityService) {
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
-        } else {
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        // Prefer a normal application overlay whenever the explicit
+        // SYSTEM_ALERT_WINDOW permission is available. Unlike
+        // TYPE_ACCESSIBILITY_OVERLAY, this window remains visible when vivo
+        // hands the foreground to an app clone running under another Android
+        // user (e.g. WeChat B in user 999). Fall back to accessibility overlay
+        // only when draw-over-other-apps is not granted.
+        val overlayType = when {
+            Settings.canDrawOverlays(ctx) ->
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            ctx is AccessibilityService ->
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+            else ->
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         }
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,

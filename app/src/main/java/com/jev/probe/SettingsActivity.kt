@@ -429,6 +429,9 @@ class SettingsActivity : AppCompatActivity() {
             }
         })
         card2.addView(kbResult)
+        card2.addView(cardBtn("捕获诊断") {
+            startActivity(android.content.Intent(this, DiagnosticsActivity::class.java))
+        })
         root.addView(card2)
 
         // =================== 外观 ===================

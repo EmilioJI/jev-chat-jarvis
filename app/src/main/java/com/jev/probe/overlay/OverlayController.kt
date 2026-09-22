@@ -345,6 +345,7 @@ class OverlayController(private val ctx: Context) {
         ensureRoot(); bubble?.alpha = 1f
         ctxNotes = 0; ctxHistory = 0   // counts for the round that is starting
         replyError = null              // this round has not failed (yet)
+        replySorting = false
         setContent(listOf(hint("分析中…")))
         if (!expanded) toggle()
     }
@@ -440,9 +441,14 @@ class OverlayController(private val ctx: Context) {
         if (bits.isNotEmpty()) views.add(line(bits.joinToString("  ·  "), "#5C6560", 13f))
         a.tensionResolved?.let { if (it >= 0.7) views.add(line("✓ 紧张已缓解", "#2E7858", 12f)) }
 
+        val rankingUnavailable = replyError != null && a.rankedReplies.isNotEmpty()
         views.add(divider())
         views.add(line(
-            if (replySorting) "候选回复 · 正在智能排序" else "推荐回复 · 智能排序",
+            when {
+                replySorting -> "候选回复 · 正在智能排序"
+                rankingUnavailable -> "候选回复 · 排序暂不可用"
+                else -> "推荐回复 · 智能排序"
+            },
             "#976F3E", 12f, true
         ))
         if (generating) {
@@ -453,11 +459,13 @@ class OverlayController(private val ctx: Context) {
                 views.add(replyCard(
                     i + 1,
                     r.text,
-                    if (replySorting) null else (r.prob * 100).roundToInt(),
+                    if (replySorting || rankingUnavailable) null else (r.prob * 100).roundToInt(),
                     fill
                 ))
             }
-            if (a.rankedReplies.isEmpty()) {
+            if (rankingUnavailable) {
+                views.add(hint("排序失败，先按生成顺序显示；候选仍可复制或填入"))
+            } else if (a.rankedReplies.isEmpty()) {
                 val msg = replyError?.let { "回复接口出错：$it" } ?: "（未生成候选回复）"
                 views.add(hint(msg))
             }

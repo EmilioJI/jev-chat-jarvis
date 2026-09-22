@@ -27,8 +27,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var prefs: Prefs
     private lateinit var container: LinearLayout
 
-    private val a11yComponent =
-        "com.jev.probe/com.google.android.accessibility.selecttospeak.SelectToSpeakService"
+    private val a11yComponent: String
+        get() = "$packageName/com.google.android.accessibility.selecttospeak.SelectToSpeakService"
 
     private fun dp(v: Int) = Guofeng.dp(this, v)
 

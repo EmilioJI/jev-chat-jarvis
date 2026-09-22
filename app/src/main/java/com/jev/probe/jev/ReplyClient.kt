@@ -3,6 +3,7 @@ package com.jev.probe.jev
 import com.jev.probe.core.ChatSnapshot
 import com.jev.probe.core.Prefs
 import com.jev.probe.core.kb.ChatContext
+import com.jev.probe.core.kb.HistoryTime
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -26,7 +27,9 @@ class ReplyClient(private val prefs: Prefs) {
         }
         val sys = "你是中文即时通讯回复助手。只输出一个 JSON 数组，含且仅含 3 条候选回复文本，" +
             "三条策略要有区别（例如：一条稳妥承接、一条给具体行动或承诺、一条简短低姿态）。" +
-            "每条不超过 40 字，口语、自然、像真人在聊天软件里发消息。不要解释，不要加引号以外的内容，直接输出 JSON 数组。"
+            "每条不超过 40 字，口语、自然、像真人在聊天软件里发消息。" +
+            "若历史带时间信息，涉及临时计划、日期、地点、状态、截止时间或承诺时必须考虑新旧，旧记录不能压过较新的信息。" +
+            "不要解释，不要加引号以外的内容，直接输出 JSON 数组。"
         val user = knowledgeBlock(ctx) +
             "关系：$relationship\n\n最近对话：\n$convo\n\n请给出 3 条候选回复。"
         return parseThree(chat(sys, user, temperature = 0.8))
@@ -43,9 +46,13 @@ class ReplyClient(private val prefs: Prefs) {
             .append("可以直接引用其中事实，不要编造知识库里没有的事实。\n")
         if (background.isNotBlank()) sb.append(background).append('\n')
         if (history.isNotEmpty()) {
-            sb.append("\n更早的聊天记录（越靠下越新）：\n")
+            val now = System.currentTimeMillis()
+            sb.append("\n").append(HistoryTime.modelGuidance(now)).append("\n")
+            sb.append("\n更早的聊天记录（越靠下越新；每条时间是记录时间）：\n")
             history.takeLast(prefs.contextHistoryCount.coerceIn(0, 100)).forEach {
-                sb.append(if (it.side == "me") "我：" else "对方：").append(it.text).append('\n')
+                sb.append(HistoryTime.stamp(it.ts, now)).append(' ')
+                sb.append(if (it.side == "me") "我：" else "对方：")
+                    .append(it.text).append('\n')
             }
         }
         sb.append('\n')

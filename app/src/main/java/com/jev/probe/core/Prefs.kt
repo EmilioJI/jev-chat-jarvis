@@ -332,9 +332,11 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
         const val OCR_MLKIT = "mlkit"
         const val OCR_VISION = "vision"
 
-        // Shared GLM-4.7 OpenAI-compatible endpoint.
+        // Zhipu OpenAI-compatible endpoint. Judgment stays on the calibrated
+        // GLM-4.7 path; reply generation uses the lower-latency GLM-5.3-Flash.
         const val GLM_BASE = "https://open.bigmodel.cn/api/paas/v4"
-        const val GLM_MODEL = "glm-4.7"
+        const val GLM_JUDGE_MODEL = "glm-4.7"
+        const val GLM_MODEL = "glm-5.3-flash"
 
         // Judge route presets.
         const val DEFAULT_JUDGE_BASE_OPENROUTER = "https://openrouter.ai/api"
@@ -342,13 +344,13 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
         const val DEFAULT_JUDGE_BASE_TYPESAFE = "https://api.typesafe.ai"
         const val DEFAULT_JUDGE_MODEL_TYPESAFE = "jev-latest"
         const val DEFAULT_JUDGE_BASE_GLM47 = GLM_BASE
-        const val DEFAULT_JUDGE_MODEL_GLM47 = GLM_MODEL
+        const val DEFAULT_JUDGE_MODEL_GLM47 = GLM_JUDGE_MODEL
 
         // Reply route presets (OpenAI-compatible chat completions).
         const val DEFAULT_REPLY_BASE = "https://openrouter.ai/api/v1"
         const val DEFAULT_REPLY_MODEL = "deepseek/deepseek-chat-v3.1"
         const val DEEPSEEK_BASE = "https://api.deepseek.com/v1"
-        const val DEEPSEEK_MODEL = "deepseek-chat"
+        const val DEEPSEEK_MODEL = "deepseek-flash"
         const val DASHSCOPE_BASE = "https://dashscope.aliyuncs.com/compatible-mode/v1"
         const val DASHSCOPE_MODEL = "qwen-plus"
 

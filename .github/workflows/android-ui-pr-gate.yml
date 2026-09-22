@@ -58,8 +58,8 @@ jobs:
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
           test -x "$AAPT"
           BADGING="$("$AAPT" dump badging "$APK")"
-          printf '%s\n' "$BADGING" | grep -F "package: name='com.jev.probe.guofeng'"
-          printf '%s\n' "$BADGING" | grep -F "application-label:'Jev聊天助手·国风验收'"
+          printf '%s\n' "$BADGING" | grep -F "package: name='com.jev.probe.compliance'"
+          printf '%s\n' "$BADGING" | grep -F "application-label:'Jev聊天助手·合规A/B'"
           printf '%s\n' "$BADGING" | grep -F "targetSdkVersion:'36'"
           printf '%s\n' "$BADGING" | grep -F "compileSdkVersion='36'"
 

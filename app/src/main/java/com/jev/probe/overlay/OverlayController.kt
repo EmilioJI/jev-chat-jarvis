@@ -1,5 +1,6 @@
 package com.jev.probe.overlay
 
+import android.accessibilityservice.AccessibilityService
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
@@ -78,7 +79,8 @@ class OverlayController(private val ctx: Context) {
     private fun dp(v: Int) = TypedValue.applyDimension(
         TypedValue.COMPLEX_UNIT_DIP, v.toFloat(), ctx.resources.displayMetrics).roundToInt()
 
-    private fun canOverlay(): Boolean = Settings.canDrawOverlays(ctx)
+    private fun canOverlay(): Boolean =
+        ctx is AccessibilityService || Settings.canDrawOverlays(ctx)
 
     private val screenW get() = ctx.resources.displayMetrics.widthPixels
     private val screenH get() = ctx.resources.displayMetrics.heightPixels
@@ -105,10 +107,15 @@ class OverlayController(private val ctx: Context) {
     private fun ensureRoot() {
         if (root != null) return
         if (!canOverlay()) { android.util.Log.w("JEVASSIST", "overlay: canDrawOverlays=false"); return }
+        val overlayType = if (ctx is AccessibilityService) {
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+        } else {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        }
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            overlayType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         ).apply {
@@ -124,7 +131,10 @@ class OverlayController(private val ctx: Context) {
         r.addView(p)
         r.addView(bubbleWrap)
         root = r
-        try { wm.addView(r, params) } catch (e: Exception) {
+        try {
+            wm.addView(r, params)
+            android.util.Log.i("JEVASSIST", "overlay added type=$overlayType")
+        } catch (e: Exception) {
             android.util.Log.e("JEVASSIST", "overlay addView failed: ${e.message}"); root = null
         }
     }

@@ -31,18 +31,18 @@ import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 
 /**
- * The live capture service (registered under a disguised class name so WeChat
- * exposes its node tree — see the disguised subclass). It reads whichever
- * adapted chat app is in the foreground, detects a new incoming message from the
- * other person, runs Jev analysis off the main thread, and drives the floating
- * overlay.
+ * Standard Android AccessibilityService used transparently under this app's own
+ * class/package identity.
  *
- * Per-app node rules live in [ChatAppAdapter] implementations; everything here
- * is app-agnostic.
+ * WeChat runs in user-active mode: accessibility events keep the overlay ready,
+ * but no WeChat node tree, view id, OCR or model request is inspected merely
+ * because a message/window event arrived. A user tap is required before one
+ * best-effort read is attempted. If standard nodes are unavailable, clipboard
+ * and on-device OCR remain explicit alternatives.
  *
- * It never sends a message. The only write action is ACTION_SET_TEXT (or a
- * clipboard PASTE fallback) to fill the chat input box when the user taps
- * "填入"; the user still presses send.
+ * The service never sends a message. Formal WeChat mode also never performs
+ * ACTION_SET_TEXT / ACTION_PASTE / ACTION_CLICK; candidates are copied and the
+ * user pastes/sends them. Legacy direct-fill code remains only for other apps.
  */
 open class ChatCaptureService : AccessibilityService() {
 

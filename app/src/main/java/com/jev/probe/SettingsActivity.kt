@@ -341,7 +341,7 @@ class SettingsActivity : AppCompatActivity() {
         val relEdit = edit(prefs.relationship, "例如：同事、客户、家人；联系人可单独设置")
         card2.addView(relEdit)
         card2.addView(text(
-            "会自动读取当前会话标题（微信备注名/昵称、群名等）作为身份；不会仅凭昵称猜关系。联系人档案里的关系优先于这里。",
+            "主动分析时，如当前应用的标准控件可读，会把会话标题/备注名作为身份线索；微信安全模式不会在后台持续读取。不会仅凭昵称猜关系，联系人档案里的关系优先于这里。",
             11f, sub
         ))
         card2.addView(label("会话白名单（每行一个关键词，空=所有会话）"))
@@ -349,8 +349,9 @@ class SettingsActivity : AppCompatActivity() {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE; minLines = 2
         }
         card2.addView(wlEdit)
-        val autoRow = toggleRow("对方发消息时自动分析", prefs.autoAnalyze)
+        val autoRow = toggleRow("其他适配应用收到消息时自动分析", prefs.autoAnalyze)
         card2.addView(autoRow)
+        card2.addView(text("默认关闭。微信始终采用主动模式：点悬浮球后才读取/分析当前内容。", 11f, sub))
 
         // --- OCR 兜底 ---
         var ocrEngineSelected = prefs.ocrEngine
@@ -362,20 +363,19 @@ class SettingsActivity : AppCompatActivity() {
             ocrEngineSelected = if (idx == 1) Prefs.OCR_VISION else Prefs.OCR_MLKIT
         })
         card2.addView(text(
-            "本地 ML Kit 不上传截图；视觉 API 仅在控件树读不到正文时上传裁剪后的聊天区域。" +
-                "视觉调用失败或无法可靠识别说话人时会自动回退本地 OCR。",
+            "本地 ML Kit 完全在手机上运行，不需要图像 API Key，也不上传截图；视觉 API 是可选能力，只有你明确选择后才会上传裁剪后的聊天区域。微信不会强制截图识别。",
             11f, sub
         ))
 
-        val ocrFallbackRow = toggleRow("树读不到正文时用 OCR 兜底", prefs.ocrFallback)
+        val ocrFallbackRow = toggleRow("其他适配应用控件不可读时自动 OCR", prefs.ocrFallback)
         card2.addView(ocrFallbackRow)
         card2.addView(text(
-            "飞书正文是画上去的、微信伪装失效时也可能读不到，这时才进入所选 OCR 引擎。",
+            "默认关闭。微信安全模式不会自动触发 OCR；需要时由你在悬浮球里手动选择本地截屏识别。",
             11f, sub
         ))
         val ocrAutoRow = toggleRow("OCR 模式自动分析", prefs.ocrAutoAnalyze)
         card2.addView(ocrAutoRow)
-        card2.addView(text("关闭时 OCR 认完只亮悬浮球，点一下再分析。", 11f, sub))
+        card2.addView(text("仅影响非微信的自动 OCR 路径；微信仍需用户主动触发。", 11f, sub))
 
         // --- 知识库 / 关联上下文（D 阶段） ---
         val ctxRow = toggleRow("记录聊天历史（只存本机，用于关联上下文）", prefs.contextEnabled)
@@ -494,9 +494,9 @@ class SettingsActivity : AppCompatActivity() {
             prefs.relationship = relEdit.text.toString()   // blank stays blank, on purpose
             prefs.whitelist = wlEdit.text.toString().split("\n")
                 .map { it.trim() }.filter { it.isNotEmpty() }.toSet()
-            prefs.autoAnalyze = (autoRow.tag as? Boolean) ?: true
+            prefs.autoAnalyze = (autoRow.tag as? Boolean) ?: false
             prefs.ocrEngine = ocrEngineSelected
-            prefs.ocrFallback = (ocrFallbackRow.tag as? Boolean) ?: true
+            prefs.ocrFallback = (ocrFallbackRow.tag as? Boolean) ?: false
             prefs.ocrAutoAnalyze = (ocrAutoRow.tag as? Boolean) ?: false
             prefs.contextEnabled = (ctxRow.tag as? Boolean) ?: false
             prefs.autoSummary = (autoSummaryRow.tag as? Boolean) ?: false

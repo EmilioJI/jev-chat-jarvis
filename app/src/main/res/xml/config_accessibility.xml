@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeViewScrolled"
-    android:packageNames="com.tencent.mm,com.tencent.mobileqq,com.ss.android.lark,com.twitter.android"
+    android:packageNames="com.tencent.mm,com.tencent.mobileqq,com.ss.android.lark,com.twitter.android,com.vivo.doubleinstance"
     android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows"
     android:canRetrieveWindowContent="true"
     android:canTakeScreenshot="true"

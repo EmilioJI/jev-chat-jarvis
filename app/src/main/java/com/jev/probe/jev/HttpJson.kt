@@ -63,6 +63,10 @@ object HttpJson {
                     requestMethod = "POST"
                     connectTimeout = 15000
                     readTimeout = 40000
+                    // API keys and chat content must never follow a transparent
+                    // 3xx hop to another origin. A model endpoint should be
+                    // explicit; surface redirects as HTTP errors instead.
+                    instanceFollowRedirects = false
                     doOutput = true
                     setRequestProperty("Authorization", "Bearer $key")
                     setRequestProperty("Content-Type", "application/json; charset=utf-8")

@@ -617,7 +617,7 @@ open class ChatCaptureService : AccessibilityService() {
                     Log.w(TAG, "vision ocr failed: ${e.javaClass.simpleName}")
                     emptyList()
                 } finally {
-                    runCatching { crop.recycle() }
+                    if (crop !== original) runCatching { crop.recycle() }
                 }
 
                 main.post {
@@ -648,7 +648,7 @@ open class ChatCaptureService : AccessibilityService() {
                 }
             }
         } catch (_: RejectedExecutionException) {
-            runCatching { crop.recycle() }
+            if (crop !== original) runCatching { crop.recycle() }
             runCatching { original.recycle() }
             ocrBusy = false
         }

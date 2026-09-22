@@ -290,7 +290,8 @@ class SettingsActivity : AppCompatActivity() {
         val visionResult = resultText()
         visionCard.addView(cardBtn("测试视觉") {
             val visionBase = visionBaseEdit.text.toString().trim()
-            if (!VisionClient.supportsVision(visionBase.ifBlank { Prefs.DEFAULT_VISION_BASE })) {
+            val visionModel = visionModelEdit.text.toString().trim().ifBlank { Prefs.DEFAULT_VISION_MODEL }
+            if (!VisionClient.supportsVision(visionBase.ifBlank { Prefs.DEFAULT_VISION_BASE }, visionModel)) {
                 visionResult.text = GUARD_NO_VISION
                 return@cardBtn
             }
@@ -304,7 +305,7 @@ class SettingsActivity : AppCompatActivity() {
                 replyKey = replyKeyEdit.text.toString().trim()
                 visionBaseUrl = visionBase
                 visionKey = visionKeyEdit.text.toString().trim()
-                visionModel = visionModelEdit.text.toString().trim().ifBlank { Prefs.DEFAULT_VISION_MODEL }
+                visionModel = visionModel
             }
             if (probe.effectiveVisionKey().isBlank()) {
                 clearScratch(SCRATCH_VISION)
@@ -731,7 +732,7 @@ class SettingsActivity : AppCompatActivity() {
 
         /** DeepSeek's official API has no vision model; say so instead of a 400. */
         private const val GUARD_NO_VISION =
-            "该接口不支持视觉（DeepSeek 官方没有 image_url），请换 OpenRouter 或通义兼容"
+            "DeepSeek 官方视觉仅支持 deepseek-flash；请改模型名或换 OpenRouter / 通义兼容"
 
         /** One scratch prefs file per test button; never the real config. */
         private const val SCRATCH_JUDGE = "jev_probe_scratch_judge"

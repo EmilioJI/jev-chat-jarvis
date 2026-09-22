@@ -5,6 +5,7 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStream
 import java.net.HttpURLConnection
+import java.net.URI
 import java.net.URL
 
 /**
@@ -54,6 +55,7 @@ object HttpJson {
         route: String,
         extraHeaders: Map<String, String> = emptyMap()
     ): JSONObject {
+        validateEndpoint(url, route)
         var attempt = 0
         var last: ApiException? = null
         while (attempt < MAX_ATTEMPTS) {
@@ -107,6 +109,48 @@ object HttpJson {
             }
         }
         throw last ?: ApiException(route, null, "请求失败")
+    }
+
+    /**
+     * Bearer credentials and chat content must not travel over cleartext HTTP.
+     * The only exception is loopback development on the same device/emulator.
+     */
+    private fun validateEndpoint(url: String, route: String) {
+        val uri = try {
+            URI(url.trim())
+        } catch (_: Exception) {
+            throw ApiException(route, null, "接口地址不是有效 URL")
+        }
+
+        if (uri.userInfo != null) {
+            throw ApiException(route, null, "接口地址不能包含用户名或密码")
+        }
+        if (uri.fragment != null) {
+            throw ApiException(route, null, "接口地址不能包含 #fragment")
+        }
+
+        val scheme = uri.scheme?.lowercase()
+        val host = uri.host?.lowercase()
+        if (scheme.isNullOrBlank() || host.isNullOrBlank()) {
+            throw ApiException(route, null, "接口地址缺少协议或主机名")
+        }
+
+        if (scheme == "https") return
+
+        val loopback = host == "localhost" ||
+            host == "127.0.0.1" ||
+            host == "::1" ||
+            host == "[::1]"
+        if (scheme == "http" && loopback) return
+
+        if (scheme == "http") {
+            throw ApiException(
+                route,
+                null,
+                "为保护 API Key 和聊天内容，仅允许 HTTPS；HTTP 只可用于 localhost/loopback 调试"
+            )
+        }
+        throw ApiException(route, null, "不支持的接口协议：$scheme")
     }
 
     /** Body text, or "" — a null stream or a read failure never costs us the status code. */

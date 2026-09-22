@@ -124,7 +124,8 @@ class SettingsActivity : AppCompatActivity() {
         judgeCard.addView(label("Base URL"))
         judgeCard.addView(judgeBaseEdit)
         judgeCard.addView(text(
-            "OpenRouter Jev：/alpha/decisions；TypeSafe：/v1/systemone；GLM-4.7：/chat/completions；自定义 Jev 按完整 URL POST。",
+            "OpenRouter Jev：/alpha/decisions；TypeSafe：/v1/systemone；GLM-4.7：/chat/completions；" +
+                "自定义 Jev 按完整 URL POST。自定义公网地址必须 HTTPS（localhost/loopback 调试除外）。",
             11f, sub
         ))
         judgeCard.addView(label("密钥"))
@@ -179,7 +180,8 @@ class SettingsActivity : AppCompatActivity() {
         val replyCard = card()
         replyCard.addView(cardTitle("回复接口"))
         replyCard.addView(text(
-            "生成 3 条候选回复。可与判断引擎使用同一服务商；留空 Key 只在同 host 时继承。",
+            "生成 3 条候选回复。可与判断引擎使用同一服务商；留空 Key 只在同 host 时继承。" +
+                "自定义公网地址必须 HTTPS。",
             12f, sub
         ))
 
@@ -257,7 +259,7 @@ class SettingsActivity : AppCompatActivity() {
         visionCard.addView(cardTitle("视觉接口（远程 OCR，可选）"))
         visionCard.addView(text(
             "只有在下面把 OCR 引擎切到“视觉 API”时才参与实时识别；默认 ML Kit 完全本地。" +
-                "远程模式只上传裁剪后的聊天内容区域。",
+                "远程模式只上传裁剪后的聊天内容区域；自定义公网地址必须 HTTPS。",
             12f, sub
         ))
 

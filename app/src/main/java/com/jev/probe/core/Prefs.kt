@@ -9,8 +9,10 @@ import java.net.URI
  * the relationship description used in Jev's state, the conversation whitelist,
  * plus the context (D stage) and OCR (B stage) switches.
  *
- * Key handling: stored in app-private SharedPreferences (not world-readable,
- * never logged, never in code/git). Only key *lengths* are ever logged.
+ * Key handling: real API credentials are AES-GCM encrypted with a key held by
+ * AndroidKeyStore; only ciphertext is stored in SharedPreferences after a
+ * verified migration. Scratch/self-check prefs remain isolated and short-lived.
+ * Key material and plaintext are never logged or stored in code/git.
  */
 class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
 
@@ -27,9 +29,12 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
         if (prefsName == PREFS_MAIN) {
             migrateIfNeeded()
             // Proactively migrate any v1.3 plaintext route keys.
-            judgeKey
+            val migratedJudge = judgeKey
             replyKey
             visionKey
+            // v1.2's original key had a different preference name. Once the
+            // v1.3 judge slot is readable, the obsolete duplicate is unnecessary.
+            if (migratedJudge.isNotBlank()) sp.edit().remove(K_LEGACY_KEY).apply()
         }
     }
 

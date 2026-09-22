@@ -221,16 +221,49 @@ open class ChatCaptureService : AccessibilityService() {
                         titlePresent = false,
                         messageCount = 0,
                         latestFrom = null,
-                        status = "idle"
+                        status = "capture_only"
                     )
                 }
-                main.post { if (drop) overlay?.hide() else overlay?.showIdle(null) }
+                // A clone-app resolver is the hand-off into another Android user.
+                // The user-0 accessibility service cannot trust any old snapshot
+                // after that boundary, but its display overlay can remain visible.
+                currentSnapshot = null
+                activePkg = null
+                main.post {
+                    if (drop) {
+                        overlay?.hide()
+                    } else {
+                        val note = if (fg == "com.vivo.doubleinstance") {
+                            "分身应用兼容模式"
+                        } else {
+                            "当前应用需截图识别"
+                        }
+                        overlay?.showCaptureOnly(note)
+                    }
+                }
                 return
             }
         }
 
         when (type) {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
+                // WeChat often reports ChattingMainUI before its message subtree
+                // is readable. With no whitelist constraint, give instant UI
+                // feedback now and let the normal capture settle asynchronously.
+                val eventPkg = event.packageName?.toString()
+                val eventClass = event.className?.toString().orEmpty()
+                if (
+                    eventPkg == "com.tencent.mm" &&
+                    eventClass.contains("ChattingMainUI") &&
+                    prefs.whitelist.isEmpty()
+                ) {
+                    currentSnapshot = null
+                    main.post {
+                        overlay?.resetForNewConversation()
+                        overlay?.showIdle(null)
+                    }
+                    Log.i(TAG, "bubble fast-path: WeChat chat window")
+                }
                 maybeCapture(CaptureTrigger.WINDOW_CHANGED)
                 scheduleWindowSettle()
             }

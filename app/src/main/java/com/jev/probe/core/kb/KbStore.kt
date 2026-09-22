@@ -70,10 +70,14 @@ class KbStore private constructor(context: Context) {
 
     fun contact(id: String): Contact? = synchronized(lock) { loadContacts().firstOrNull { it.id == id } }
 
-    fun saveContact(c: Contact): Boolean = synchronized(lock) {
+    fun saveContact(c: Contact, touchUpdatedAt: Boolean = true): Boolean = synchronized(lock) {
         val list = loadContacts()
         val i = list.indexOfFirst { it.id == c.id }
-        val stamped = c.copy(updatedAt = System.currentTimeMillis())
+        val stamped = if (touchUpdatedAt) {
+            c.copy(updatedAt = System.currentTimeMillis())
+        } else {
+            c
+        }
         if (i >= 0) list[i] = stamped else list.add(stamped)
         val ok = writeAtomic(contactsFile, contactsJson(list))
         if (!ok) contactsCache = null
@@ -250,6 +254,22 @@ class KbStore private constructor(context: Context) {
         lastScreenCache.remove(contactId)
         runCatching { logFile(contactId).delete() }
         runCatching { screenFile(contactId).delete() }
+
+        // The rolling summary is derived from this history. Clearing history
+        // must clear the derived memory too, otherwise "clear history" would
+        // leave model-compressed chat facts behind.
+        val contacts = loadContacts()
+        val i = contacts.indexOfFirst { it.id == contactId }
+        if (i >= 0) {
+            val existing = contacts[i]
+            if (existing.autoSummary.isNotBlank() || existing.autoSummaryThroughTs != 0L) {
+                contacts[i] = existing.copy(
+                    autoSummary = "",
+                    autoSummaryThroughTs = 0L
+                )
+                if (!writeAtomic(contactsFile, contactsJson(contacts))) contactsCache = null
+            }
+        }
         Unit
     }
 
@@ -341,6 +361,7 @@ class KbStore private constructor(context: Context) {
                     relationship = o.optString("relationship"),
                     notes = o.optString("notes"),
                     autoSummary = o.optString("autoSummary"),
+                    autoSummaryThroughTs = o.optLong("autoSummaryThroughTs", 0L).coerceAtLeast(0L),
                     updatedAt = o.optLong("updatedAt", 0L)
                 ))
             }
@@ -394,6 +415,7 @@ class KbStore private constructor(context: Context) {
                 .put("relationship", c.relationship)
                 .put("notes", c.notes)
                 .put("autoSummary", c.autoSummary)
+                .put("autoSummaryThroughTs", c.autoSummaryThroughTs)
                 .put("updatedAt", c.updatedAt))
         }
         return arr.toString()

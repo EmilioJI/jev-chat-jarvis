@@ -134,9 +134,12 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
         get() = sp.getInt(K_CTX_COUNT, 30)
         set(v) = sp.edit().putInt(K_CTX_COUNT, v).apply()
 
-    /** Auto-summarize a contact once enough history accumulates. */
+    /**
+     * Auto-summarize a known contact after enough recorded history accumulates.
+     * Default OFF because enabling it sends stored history to the reply model.
+     */
     var autoSummary: Boolean
-        get() = sp.getBoolean(K_AUTO_SUMMARY, true)
+        get() = sp.getBoolean(K_AUTO_SUMMARY, false)
         set(v) = sp.edit().putBoolean(K_AUTO_SUMMARY, v).apply()
 
     // ------------------------------------------------------------ OCR (B)

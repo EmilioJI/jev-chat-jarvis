@@ -21,6 +21,7 @@ import com.jev.probe.core.RankedReply
 import com.jev.probe.core.kb.ContextBuilder
 import com.jev.probe.core.kb.HistoryCaptureHint
 import com.jev.probe.core.kb.KbStore
+import com.jev.probe.jev.ContactSummaryManager
 import com.jev.probe.jev.JevClient
 import com.jev.probe.jev.VisionClient
 import com.jev.probe.overlay.OverlayController
@@ -45,6 +46,8 @@ open class ChatCaptureService : AccessibilityService() {
 
     private val main = Handler(Looper.getMainLooper())
     private val worker = Executors.newFixedThreadPool(2)
+    /** Low-priority maintenance work must never occupy the real-time analysis pool. */
+    private val maintenanceWorker = Executors.newSingleThreadExecutor()
 
     /** Adapted chat apps, keyed by package name. */
     private val adapters = listOf(WeChatAdapter(), QQAdapter(), XAdapter(), FeishuAdapter()).associateBy { it.pkg }
@@ -54,6 +57,11 @@ open class ChatCaptureService : AccessibilityService() {
     private fun submit(task: () -> Unit) {
         try { worker.execute(task) } catch (_: RejectedExecutionException) { }
     }
+
+    private fun submitMaintenance(task: () -> Unit) {
+        try { maintenanceWorker.execute(task) } catch (_: RejectedExecutionException) { }
+    }
+
     private lateinit var prefs: Prefs
     private var overlay: OverlayController? = null
 
@@ -443,6 +451,29 @@ open class ChatCaptureService : AccessibilityService() {
                     pendingRanked = ranked
                     if (judgmentReady && !judgmentOk) analyzing = false
                     publishRepliesIfReady()
+                }
+
+                // Rolling contact summary is opt-in, low-frequency and off the
+                // critical UI path. Only a healthy reply route and a real newest
+                // incoming screen may trigger it; failure never affects analysis.
+                if (
+                    replyError == null && ranked.isNotEmpty() &&
+                    historyHint == HistoryCaptureHint.NEWEST_SCREEN &&
+                    sessionStillCurrent(session)
+                ) {
+                    ctx?.contact?.let { contact ->
+                        submitMaintenance {
+                            runCatching {
+                                ContactSummaryManager.maybeRefresh(
+                                    KbStore.get(this),
+                                    contact,
+                                    prefs
+                                )
+                            }.onFailure { e ->
+                                Log.w(TAG, "contact summary failed: ${e.javaClass.simpleName}")
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -988,6 +1019,7 @@ open class ChatCaptureService : AccessibilityService() {
         overlay?.hide()
         overlay = null
         worker.shutdownNow()
+        maintenanceWorker.shutdownNow()
     }
 
     companion object {

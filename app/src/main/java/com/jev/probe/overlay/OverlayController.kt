@@ -334,16 +334,18 @@ class OverlayController(private val ctx: Context) {
         setContent(views)
     }
 
-    /** WeChat safe mode: one-shot read only after a user tap; no passive scan. */
+    /**
+     * WeChat safe mode never reads WeChat's Accessibility node tree. The user
+     * explicitly provides content through clipboard text or optional local OCR.
+     */
     fun showWeChatActiveMode() {
         resetForNewConversation()
         ensureRoot()
         bubble?.alpha = 0.75f
         val views = ArrayList<View>()
-        views.add(line("微信安全模式 · 不后台读取", "#5C6560", 12f, true))
-        views.add(bigButton("分析当前对话") { onManualAnalyze?.invoke() })
-        views.add(secondaryButton("分析剪贴板") { onAnalyzeClipboard?.invoke() })
-        views.add(secondaryButton("本地截屏识别（可选）") { onOcrCapture?.invoke() })
+        views.add(line("微信安全模式 · 不读取内部控件", "#5C6560", 12f, true))
+        views.add(bigButton("分析剪贴板") { onAnalyzeClipboard?.invoke() })
+        views.add(secondaryButton("本地截屏识别（可选，无需图像 Key）") { onOcrCapture?.invoke() })
         setContent(views)
     }
 

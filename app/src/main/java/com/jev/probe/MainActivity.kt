@@ -7,6 +7,7 @@ import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -133,8 +134,24 @@ class MainActivity : AppCompatActivity() {
     private fun hero(): View {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.TOP
+            gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(2), dp(8), dp(2), dp(8))
+        }
+
+        val avatar = ImageView(this).apply {
+            setImageResource(R.drawable.zhiyan_mascot_avatar)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            contentDescription = "小书童·知言"
+            background = Guofeng.round(
+                this@MainActivity,
+                30,
+                Guofeng.CARD,
+                Guofeng.BORDER_JADE
+            )
+            setPadding(dp(2), dp(2), dp(2), dp(2))
+            layoutParams = LinearLayout.LayoutParams(dp(58), dp(58)).apply {
+                rightMargin = dp(12)
+            }
         }
 
         val left = LinearLayout(this).apply {
@@ -145,12 +162,12 @@ class MainActivity : AppCompatActivity() {
                 1f
             )
         }
-        left.addView(text("Jev 聊天助手", 28f, Guofeng.JADE_DEEP, bold = true, serif = true))
+        left.addView(text("小书童·知言", 26f, Guofeng.JADE_DEEP, bold = true, serif = true))
         left.addView(text("装在手机上的「对话副驾」", 14f, Guofeng.INK_SOFT).apply {
-            setPadding(0, dp(5), 0, 0)
+            setPadding(0, dp(4), 0, 0)
         })
         left.addView(text("知言 · 慎答 · 由你发送", 12f, Guofeng.GOLD).apply {
-            setPadding(0, dp(7), 0, 0)
+            setPadding(0, dp(6), 0, 0)
         })
 
         val seal = TextView(this).apply {
@@ -162,11 +179,11 @@ class MainActivity : AppCompatActivity() {
             background = Guofeng.round(this@MainActivity, 9, Guofeng.CINNABAR)
             setPadding(dp(9), dp(7), dp(9), dp(7))
             layoutParams = LinearLayout.LayoutParams(dp(44), dp(54)).apply {
-                leftMargin = dp(10)
-                topMargin = dp(1)
+                leftMargin = dp(8)
             }
         }
 
+        row.addView(avatar)
         row.addView(left)
         row.addView(seal)
         return row
@@ -462,7 +479,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(20), dp(8), dp(20), dp(8))
 
             addView(text(
-                "Jev 聊天助手需要无障碍访问，才能在微信、QQ、X、飞书等聊天界面中读取当前屏幕上你本来就能看到的聊天内容。",
+                "小书童·知言需要无障碍访问，才能在微信、QQ、X、飞书等聊天界面中读取当前屏幕上你本来就能看到的聊天内容。",
                 14f,
                 Guofeng.INK,
                 bold = true
@@ -472,7 +489,7 @@ class MainActivity : AppCompatActivity() {
                     "• 当前活动应用和窗口中的可见文字、控件结构与会话标题；\n" +
                     "• 在控件树读不到正文时，按你的 OCR 设置截取当前聊天窗口。默认 ML Kit OCR 完全在本机；只有你明确选择“视觉 API”后，才会把裁剪后的聊天区域发送到你配置的视觉服务商。\n\n" +
                     "用途：这些内容只用于识别当前对话、生成意图判断和候选回复，并在你主动开启关联上下文时写入本机历史。分析时，聊天文本会发送给你在设置中选择的判断/回复模型服务商。\n\n" +
-                    "Jev 不会读取聊天数据库，不会自动点击发送；候选回复即使填入输入框，也仍由你检查并手动发送。你可以随时在系统无障碍设置中关闭此权限。",
+                    "小书童·知言不会读取聊天数据库，不会自动点击发送；候选回复即使填入输入框，也仍由你检查并手动发送。你可以随时在系统无障碍设置中关闭此权限。",
                 13f,
                 Guofeng.INK_SOFT
             ).apply { setPadding(0, dp(12), 0, 0) })

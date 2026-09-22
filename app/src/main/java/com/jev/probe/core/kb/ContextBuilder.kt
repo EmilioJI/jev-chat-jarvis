@@ -128,7 +128,8 @@ object ContextBuilder {
 
     private fun cost(notes: List<Note>, history: List<LogEntry>): Int =
         notes.sumOf { it.title.length + it.content.length + 2 } +
-            history.sumOf { it.text.length + 3 }
+            // Each injected history line also carries a timestamp/age prefix.
+            history.sumOf { it.text.length + 36 }
 
     private const val TAG = "JEVASSIST"
 }

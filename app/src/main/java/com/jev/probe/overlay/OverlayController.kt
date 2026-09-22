@@ -28,7 +28,7 @@ import kotlin.math.roundToInt
 
 /**
  * Floating overlay: a small draggable bubble that expands into a translucent
- * panel showing Jev's read of the chat plus 3 ranked candidate replies. All
+ * panel showing the selected judgment engine's read plus 3 ranked candidate replies. All
  * actions are copy / fill — never send.
  *
  * Design goals: let the chat show through (adjustable opacity), keep the signal
@@ -433,7 +433,7 @@ class OverlayController(private val ctx: Context) {
         a.tensionResolved?.let { if (it >= 0.7) views.add(line("✓ 紧张已缓解", "#2E7858", 12f)) }
 
         views.add(divider())
-        views.add(line("推荐回复 · Jev 排序", "#976F3E", 12f, true))
+        views.add(line("推荐回复 · 智能排序", "#976F3E", 12f, true))
         if (generating) {
             views.add(hint("生成中…"))
         } else {

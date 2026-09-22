@@ -374,6 +374,16 @@ class SettingsActivity : AppCompatActivity() {
         val ctxRow = toggleRow("记录聊天历史（只存本机，用于关联上下文）", prefs.contextEnabled)
         card2.addView(ctxRow)
         card2.addView(text("关闭时不写任何聊天内容到磁盘；笔记与联系人匹配仍然照常工作。", 11f, sub))
+        val autoSummaryRow = toggleRow(
+            "自动更新联系人摘要（会调用回复模型）",
+            prefs.autoSummary
+        )
+        card2.addView(autoSummaryRow)
+        card2.addView(text(
+            "默认关闭。仅对已保存联系人、且已开启历史记录时生效；首次累计约 24 条后摘要，" +
+                "之后每新增约 20 条才更新。摘要会把已记录聊天发送到你选择的回复模型。",
+            11f, sub
+        ))
         card2.addView(label("注入最近历史条数（0–100）"))
         val ctxCountEdit = edit(prefs.contextHistoryCount.toString(), "30").apply {
             inputType = InputType.TYPE_CLASS_NUMBER
@@ -479,6 +489,7 @@ class SettingsActivity : AppCompatActivity() {
             prefs.ocrFallback = (ocrFallbackRow.tag as? Boolean) ?: true
             prefs.ocrAutoAnalyze = (ocrAutoRow.tag as? Boolean) ?: false
             prefs.contextEnabled = (ctxRow.tag as? Boolean) ?: false
+            prefs.autoSummary = (autoSummaryRow.tag as? Boolean) ?: false
             prefs.contextHistoryCount =
                 ctxCountEdit.text.toString().trim().toIntOrNull()?.coerceIn(0, 100) ?: 30
             prefs.overlayOpacity = seek.progress + 60

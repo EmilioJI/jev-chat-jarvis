@@ -45,16 +45,16 @@ internal class SecureSecretStore(
         return try {
             val encoded = encrypt(legacy)
             check(decrypt(encoded) == legacy) { "secret round-trip mismatch" }
-            val committed = prefs.edit()
+            // Phase 1: persist verified ciphertext while plaintext still
+            // exists. Only after this succeeds may phase 2 remove plaintext.
+            val encryptedCommitted = prefs.edit()
                 .putString(encryptedPref, encoded)
-                .remove(legacyPlainPref)
                 .commit()
-            if (committed) {
+            if (encryptedCommitted) {
+                prefs.edit().remove(legacyPlainPref).commit()
                 Log.i(TAG, "secret migrated to AndroidKeyStore")
-                legacy
-            } else {
-                legacy
             }
+            legacy
         } catch (e: Exception) {
             Log.w(TAG, "secret migration deferred: ${e.javaClass.simpleName}")
             legacy
@@ -70,11 +70,14 @@ internal class SecureSecretStore(
         try {
             val encoded = encrypt(value)
             check(decrypt(encoded) == value) { "secret round-trip mismatch" }
-            val committed = prefs.edit()
+            val encryptedCommitted = prefs.edit()
                 .putString(encryptedPref, encoded)
-                .remove(legacyPlainPref)
                 .commit()
-            if (!committed) {
+            if (encryptedCommitted) {
+                // Failure here only leaves both copies; the next read prefers
+                // verified ciphertext and can retry cleanup later.
+                prefs.edit().remove(legacyPlainPref).commit()
+            } else {
                 prefs.edit().putString(legacyPlainPref, value).apply()
             }
         } catch (e: Exception) {

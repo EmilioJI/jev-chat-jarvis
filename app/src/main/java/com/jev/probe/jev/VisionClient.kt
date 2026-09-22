@@ -14,8 +14,10 @@ import org.json.JSONObject
  * chat-content region through this client. Local ML Kit remains the default.
  *
  * Reads visionBaseUrl / visionKey / visionModel from [Prefs]. The base URL does
- * not inherit from the reply route (a DeepSeek-style host has no vision
- * endpoint); the key still falls back reply -> judge.
+ * not inherit from the reply route; the key still falls back reply -> judge.
+ * Current DeepSeek Flash is multimodal, but older/non-Flash DeepSeek model names
+ * are rejected on the official DeepSeek host to avoid sending image_url to an
+ * incompatible model.
  *
  * Wire format notes that cost real debugging time:
  * - JPEG, not PNG: a screenshot as PNG base64 is several times larger.
@@ -69,8 +71,11 @@ class VisionClient(private val prefs: Prefs) {
             return Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
         }
 
-        /** DeepSeek's official API has no vision model; `image_url` is rejected. */
-        fun supportsVision(baseUrl: String): Boolean =
-            !baseUrl.contains("api.deepseek.com", ignoreCase = true)
+        /** DeepSeek official vision is supported only by the current Flash model. */
+        fun supportsVision(baseUrl: String, model: String): Boolean {
+            if (!baseUrl.contains("api.deepseek.com", ignoreCase = true)) return true
+            val m = model.trim().lowercase()
+            return m == "deepseek-flash" || m.endsWith("/deepseek-flash")
+        }
     }
 }

@@ -42,7 +42,7 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
 
     // ---------------------------------------------------------------- judge
 
-    /** "openrouter" | "typesafe" | "custom". */
+    /** "openrouter" | "typesafe" | "glm47" | "custom". */
     var judgeProvider: String
         get() = sp.getString(K_JUDGE_PROVIDER, PROVIDER_OPENROUTER) ?: PROVIDER_OPENROUTER
         set(v) = sp.edit().putString(K_JUDGE_PROVIDER, v.trim()).apply()
@@ -147,7 +147,7 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
 
     // ------------------------------------------------------------- existing
 
-    /** Free-text describing who the other person is; goes into Jev's state. */
+    /** Free-text describing who the other person is; goes into the judgment engine context. */
     var relationship: String
         get() = sp.getString(K_REL, DEFAULT_REL) ?: DEFAULT_REL
         set(v) = sp.edit().putString(K_REL, v).apply()
@@ -193,12 +193,13 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
     /** Vision route key, falling back to reply then judge. */
     fun effectiveVisionKey(): String = visionKey.ifBlank { effectiveReplyKey() }
 
-    /** Full POST URL for the Jev decisions call, per provider. */
+    /** Full POST URL for the selected judgment engine. */
     fun judgeEndpoint(): String {
         val base = judgeBaseUrl.trim().trimEnd('/')
         return when (judgeProvider) {
             PROVIDER_TYPESAFE -> "$base/v1/systemone"
-            PROVIDER_CUSTOM -> judgeBaseUrl.trim()   // user supplies the full URL
+            PROVIDER_GLM47 -> "$base/chat/completions"
+            PROVIDER_CUSTOM -> judgeBaseUrl.trim()   // legacy custom Jev endpoint
             else -> "$base/alpha/decisions"
         }
     }
@@ -257,6 +258,7 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
 
         const val PROVIDER_OPENROUTER = "openrouter"
         const val PROVIDER_TYPESAFE = "typesafe"
+        const val PROVIDER_GLM47 = "glm47"
         const val PROVIDER_CUSTOM = "custom"
 
         const val OCR_MLKIT = "mlkit"
@@ -267,6 +269,8 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
         const val DEFAULT_JUDGE_MODEL_OPENROUTER = "typesafe/jev-1.13"
         const val DEFAULT_JUDGE_BASE_TYPESAFE = "https://api.typesafe.ai"
         const val DEFAULT_JUDGE_MODEL_TYPESAFE = "jev-latest"
+        const val DEFAULT_JUDGE_BASE_GLM47 = "https://open.bigmodel.cn/api/paas/v4"
+        const val DEFAULT_JUDGE_MODEL_GLM47 = "glm-4.7"
 
         // Reply route presets (OpenAI-compatible chat completions).
         const val DEFAULT_REPLY_BASE = "https://openrouter.ai/api/v1"

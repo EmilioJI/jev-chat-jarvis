@@ -250,16 +250,27 @@ class KnowledgeActivity : AppCompatActivity() {
         if (c0.notes.isNotBlank())
             c.addView(text("备注：" + c0.notes.replace("\n", " ").take(40), 12f, sub)
                 .apply { setPadding(0, dp(3), 0, 0) })
+        if (c0.autoSummary.isNotBlank())
+            c.addView(text("摘要：" + c0.autoSummary.replace("\n", " ").take(70), 12f, Guofeng.GOLD)
+                .apply { setPadding(0, dp(3), 0, 0) })
 
         val logN = store.logSize(c0.id)
+        val hasSummary = c0.autoSummary.isNotBlank()
         val clear = TextView(this).apply {
-            text = "清空此人历史（$logN 条）"
+            text = "清空此人历史与摘要（$logN 条）"
             textSize = 12.5f; setTextColor(red); typeface = Guofeng.sans(true)
             setPadding(0, dp(10), 0, dp(2))
             setOnClickListener {
-                if (logN == 0) { toast("本来就没有历史"); return@setOnClickListener }
-                confirm("清空历史", "删掉「${c0.name}」的 $logN 条聊天历史？联系人档案保留。") {
-                    store.clearLog(c0.id); render()
+                if (logN == 0 && !hasSummary) {
+                    toast("本来就没有历史或摘要")
+                    return@setOnClickListener
+                }
+                confirm(
+                    "清空历史与摘要",
+                    "删掉「${c0.name}」的 $logN 条聊天历史及其派生摘要？联系人档案保留。"
+                ) {
+                    store.clearLog(c0.id)
+                    render()
                 }
             }
         }
@@ -305,7 +316,8 @@ class KnowledgeActivity : AppCompatActivity() {
                     apps = existing?.apps ?: emptyList(),
                     relationship = relEdit.text.toString().trim(),
                     notes = notesEdit.text.toString().trim(),
-                    autoSummary = existing?.autoSummary ?: ""
+                    autoSummary = existing?.autoSummary ?: "",
+                    autoSummaryThroughTs = existing?.autoSummaryThroughTs ?: 0L
                 ))
                 render()
             }

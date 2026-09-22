@@ -39,9 +39,8 @@ import java.util.concurrent.RejectedExecutionException
  * the entry point; clipboard text and optional on-device OCR are explicit user
  * actions. No WeChat resource id or internal node tree is used.
  *
- * The service never sends a message. Formal WeChat mode also never performs
- * ACTION_SET_TEXT / ACTION_PASTE / ACTION_CLICK; candidates are copied and the
- * user pastes/sends them. Legacy direct-fill code remains only for other apps.
+ * The service never sends a message and does not automate WeChat input controls.
+ * Candidates are copied, then the user pastes and sends them.
  */
 open class ChatCaptureService : AccessibilityService() {
 

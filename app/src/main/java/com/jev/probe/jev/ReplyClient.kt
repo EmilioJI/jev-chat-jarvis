@@ -35,7 +35,7 @@ class ReplyClient(private val prefs: Prefs) {
     /** The background + history preamble; empty string when there is no context. */
     private fun knowledgeBlock(relationship: String, ctx: ChatContext?): String {
         ctx ?: return ""
-        val background = ctx.background(relationship)
+        val background = ctx.background()
         val history = ctx.history
         if (background.isBlank() && history.isEmpty()) return ""
         val sb = StringBuilder()

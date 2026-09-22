@@ -462,7 +462,7 @@ class OverlayController(private val ctx: Context) {
         })
         row.addView(TextView(ctx).apply {
             text = "  " + dangerWord(lvl); setTextColor(color); textSize = 13f
-            setTypeface(typeface, Typeface.BOLD)
+            typeface = Guofeng.sans(true)
         })
         return row
     }
@@ -480,7 +480,7 @@ class OverlayController(private val ctx: Context) {
         }
         c.addView(TextView(ctx).apply {
             this.text = if (top) "推荐 · ${pct}%" else "#$rank · ${pct}%"; setTextColor(if (top) Guofeng.JADE_DEEP else Guofeng.GOLD); textSize = 11f
-            setTypeface(typeface, Typeface.BOLD)
+            typeface = Guofeng.sans(true)
         })
         c.addView(TextView(ctx).apply {
             this.text = text; setTextColor(Guofeng.INK); textSize = 14f
@@ -496,7 +496,7 @@ class OverlayController(private val ctx: Context) {
 
     private fun pill(label: String, primary: Boolean, onClick: () -> Unit) = TextView(ctx).apply {
         text = label; textSize = 13f; gravity = Gravity.CENTER
-        setTypeface(typeface, Typeface.BOLD)
+        typeface = Guofeng.sans(true)
         setTextColor(if (primary) Guofeng.CARD else Guofeng.JADE_DEEP)
         background = card(18, if (primary) Guofeng.JADE_DEEP else Guofeng.CARD, stroke = !primary)
         setPadding(dp(18), dp(6), dp(18), dp(6))

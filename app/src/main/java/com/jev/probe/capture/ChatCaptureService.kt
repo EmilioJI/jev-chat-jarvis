@@ -46,6 +46,8 @@ open class ChatCaptureService : AccessibilityService() {
 
     private val main = Handler(Looper.getMainLooper())
     private val worker = Executors.newFixedThreadPool(2)
+    /** Low-priority maintenance work must never occupy the real-time analysis pool. */
+    private val maintenanceWorker = Executors.newSingleThreadExecutor()
 
     /** Adapted chat apps, keyed by package name. */
     private val adapters = listOf(WeChatAdapter(), QQAdapter(), XAdapter(), FeishuAdapter()).associateBy { it.pkg }
@@ -55,6 +57,11 @@ open class ChatCaptureService : AccessibilityService() {
     private fun submit(task: () -> Unit) {
         try { worker.execute(task) } catch (_: RejectedExecutionException) { }
     }
+
+    private fun submitMaintenance(task: () -> Unit) {
+        try { maintenanceWorker.execute(task) } catch (_: RejectedExecutionException) { }
+    }
+
     private lateinit var prefs: Prefs
     private var overlay: OverlayController? = null
 
@@ -455,14 +462,16 @@ open class ChatCaptureService : AccessibilityService() {
                     sessionStillCurrent(session)
                 ) {
                     ctx?.contact?.let { contact ->
-                        runCatching {
-                            ContactSummaryManager.maybeRefresh(
-                                KbStore.get(this),
-                                contact,
-                                prefs
-                            )
-                        }.onFailure { e ->
-                            Log.w(TAG, "contact summary failed: ${e.javaClass.simpleName}")
+                        submitMaintenance {
+                            runCatching {
+                                ContactSummaryManager.maybeRefresh(
+                                    KbStore.get(this),
+                                    contact,
+                                    prefs
+                                )
+                            }.onFailure { e ->
+                                Log.w(TAG, "contact summary failed: ${e.javaClass.simpleName}")
+                            }
                         }
                     }
                 }
@@ -1010,6 +1019,7 @@ open class ChatCaptureService : AccessibilityService() {
         overlay?.hide()
         overlay = null
         worker.shutdownNow()
+        maintenanceWorker.shutdownNow()
     }
 
     companion object {

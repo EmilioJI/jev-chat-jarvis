@@ -70,10 +70,14 @@ class KbStore private constructor(context: Context) {
 
     fun contact(id: String): Contact? = synchronized(lock) { loadContacts().firstOrNull { it.id == id } }
 
-    fun saveContact(c: Contact): Boolean = synchronized(lock) {
+    fun saveContact(c: Contact, touchUpdatedAt: Boolean = true): Boolean = synchronized(lock) {
         val list = loadContacts()
         val i = list.indexOfFirst { it.id == c.id }
-        val stamped = c.copy(updatedAt = System.currentTimeMillis())
+        val stamped = if (touchUpdatedAt) {
+            c.copy(updatedAt = System.currentTimeMillis())
+        } else {
+            c
+        }
         if (i >= 0) list[i] = stamped else list.add(stamped)
         val ok = writeAtomic(contactsFile, contactsJson(list))
         if (!ok) contactsCache = null
@@ -261,8 +265,7 @@ class KbStore private constructor(context: Context) {
             if (existing.autoSummary.isNotBlank() || existing.autoSummaryThroughTs != 0L) {
                 contacts[i] = existing.copy(
                     autoSummary = "",
-                    autoSummaryThroughTs = 0L,
-                    updatedAt = System.currentTimeMillis()
+                    autoSummaryThroughTs = 0L
                 )
                 if (!writeAtomic(contactsFile, contactsJson(contacts))) contactsCache = null
             }

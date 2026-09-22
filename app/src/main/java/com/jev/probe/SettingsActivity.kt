@@ -29,6 +29,8 @@ import com.jev.probe.core.kb.KbStore
 import com.jev.probe.jev.JudgeClient
 import com.jev.probe.jev.ReplyClient
 import com.jev.probe.jev.VisionClient
+import com.jev.probe.ui.Guofeng
+import com.jev.probe.ui.InkPaperDrawable
 import java.util.concurrent.Executors
 import kotlin.math.roundToInt
 
@@ -38,10 +40,10 @@ class SettingsActivity : AppCompatActivity() {
     private val worker = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
 
-    private val accent = Color.parseColor("#3A7AFE")
-    private val ink = Color.parseColor("#111827")
-    private val sub = Color.parseColor("#6B7280")
-    private val pillOff = Color.parseColor("#EEF1F5")
+    private val accent = Guofeng.JADE
+    private val ink = Guofeng.INK
+    private val sub = Guofeng.INK_SOFT
+    private val pillOff = Guofeng.GOLD_SOFT
 
     /** Selected provider index per card, held so Save can read it back. */
     private var judgeProviderIdx = 0
@@ -54,9 +56,12 @@ class SettingsActivity : AppCompatActivity() {
         prefs = Prefs(this)
         Log.i(TAG, "settings opened judgeKey.len=${prefs.judgeKey.length}" +
             " replyKey.len=${prefs.replyKey.length} visionKey.len=${prefs.visionKey.length}")
-        window.decorView.setBackgroundColor(Color.parseColor("#F2F3F5"))
+        Guofeng.applyWindow(this)
 
-        val scroll = ScrollView(this)
+        val scroll = ScrollView(this).apply {
+            isVerticalScrollBarEnabled = false
+            background = InkPaperDrawable()
+        }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(18), dp(22), dp(18), dp(28))
@@ -65,6 +70,9 @@ class SettingsActivity : AppCompatActivity() {
         scroll.addView(root)
 
         root.addView(header("设置"))
+        root.addView(text("接口 · 分析 · 隐私 · 外观", 12.5f, Guofeng.GOLD).apply {
+            setPadding(0, dp(2), 0, dp(6))
+        })
 
         // =================== 接口 ===================
         root.addView(section("接口"))
@@ -443,7 +451,7 @@ class SettingsActivity : AppCompatActivity() {
     /** 1x1 white JPEG for the vision smoke test, via the real encoder path. */
     private fun whitePixelJpegB64(): String {
         val bmp = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
-        bmp.eraseColor(Color.WHITE)
+        bmp.eraseColor(Guofeng.CARD)
         return VisionClient.encodeJpeg(bmp)
     }
 
@@ -483,7 +491,7 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun paintPill(v: TextView, on: Boolean) {
-        v.setTextColor(if (on) Color.WHITE else sub)
+        v.setTextColor(if (on) Guofeng.CARD else sub)
         v.setTypeface(v.typeface, if (on) Typeface.BOLD else Typeface.NORMAL)
         v.background = round(dp(9), if (on) accent else pillOff)
     }
@@ -499,30 +507,37 @@ class SettingsActivity : AppCompatActivity() {
         val sw = TextView(this).apply {
             text = if (initial) "开" else "关"; textSize = 13f; gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
-            setTextColor(if (initial) Color.WHITE else sub)
-            background = round(dp(10), if (initial) accent else Color.parseColor("#E5E7EB"))
+            setTextColor(if (initial) Guofeng.CARD else sub)
+            background = round(dp(10), if (initial) accent else Guofeng.PAPER_DEEP)
             setPadding(dp(18), dp(6), dp(18), dp(6))
         }
         sw.setOnClickListener {
             val now = !((row.tag as? Boolean) ?: true); row.tag = now
             sw.text = if (now) "开" else "关"
-            sw.setTextColor(if (now) Color.WHITE else sub)
-            sw.background = round(dp(10), if (now) accent else Color.parseColor("#E5E7EB"))
+            sw.setTextColor(if (now) Guofeng.CARD else sub)
+            sw.background = round(dp(10), if (now) accent else Guofeng.PAPER_DEEP)
         }
         row.addView(lab); row.addView(sw)
         return row
     }
 
     // atoms
-    private fun header(t: String) = text(t, 24f, ink, bold = true).apply { setPadding(0, 0, 0, dp(4)) }
-    private fun section(t: String) = text(t, 12f, sub, bold = true).apply { setPadding(dp(2), dp(16), 0, dp(6)) }
-    private fun label(t: String) = text(t, 13f, ink, bold = true).apply { setPadding(0, dp(12), 0, dp(4)) }
-    private fun cardTitle(t: String) = text(t, 16f, ink, bold = true).apply { setPadding(0, dp(10), 0, dp(4)) }
+    private fun header(t: String) = text(t, 27f, Guofeng.JADE_DEEP, bold = true, serif = true)
+        .apply { setPadding(0, 0, 0, dp(2)) }
+    private fun section(t: String) = text(t, 16f, Guofeng.JADE_DEEP, bold = true, serif = true)
+        .apply { setPadding(dp(2), dp(18), 0, dp(5)) }
+    private fun label(t: String) = text(t, 13f, ink, bold = true).apply {
+        setPadding(0, dp(12), 0, dp(4))
+    }
+    private fun cardTitle(t: String) = text(t, 16f, Guofeng.INK, bold = true, serif = true).apply {
+        setPadding(0, dp(10), 0, dp(4))
+    }
     private fun resultText() = text("", 12.5f, sub).apply { setPadding(0, dp(10), 0, dp(2)) }
 
     private fun card() = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        background = round(dp(14), Color.WHITE)
+        background = Guofeng.round(this@SettingsActivity, 17, Guofeng.CARD, Guofeng.BORDER)
+        elevation = dp(1).toFloat()
         setPadding(dp(14), dp(4), dp(14), dp(14))
         layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -531,8 +546,8 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun edit(value: String, hint: String, password: Boolean = false) = EditText(this).apply {
         setText(value); this.hint = hint; textSize = 14f; setTextColor(ink)
-        setHintTextColor(Color.parseColor("#9CA3AF"))
-        background = round(dp(8), Color.parseColor("#F3F4F6"))
+        setHintTextColor(Guofeng.INK_FAINT)
+        background = Guofeng.round(this@SettingsActivity, 10, Guofeng.CARD_SOFT, Guofeng.BORDER)
         setPadding(dp(10), dp(10), dp(10), dp(10))
         // Masked, not VISIBLE_PASSWORD: an API key should not sit in plain sight.
         if (password) inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
@@ -540,13 +555,22 @@ class SettingsActivity : AppCompatActivity() {
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(2) }
     }
 
-    private fun text(t: String, size: Float, color: Int, bold: Boolean = false) = TextView(this).apply {
-        text = t; textSize = size; setTextColor(color); if (bold) setTypeface(typeface, Typeface.BOLD)
+    private fun text(
+        t: String,
+        size: Float,
+        color: Int,
+        bold: Boolean = false,
+        serif: Boolean = false
+    ) = TextView(this).apply {
+        text = t
+        textSize = size
+        setTextColor(color)
+        typeface = if (serif) Guofeng.serif(bold) else Guofeng.sans(bold)
     }
 
     private fun primaryBtn(label: String, onClick: () -> Unit) = TextView(this).apply {
         text = label; textSize = 15f; gravity = Gravity.CENTER; setTypeface(typeface, Typeface.BOLD)
-        setTextColor(Color.WHITE); background = round(dp(12), accent)
+        setTextColor(Guofeng.CARD); background = round(dp(12), accent)
         setPadding(dp(16), dp(13), dp(16), dp(13))
         layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(18) }
@@ -556,16 +580,20 @@ class SettingsActivity : AppCompatActivity() {
     /** Outlined button sized for inside a card. */
     private fun cardBtn(label: String, onClick: () -> Unit) = TextView(this).apply {
         text = label; textSize = 14f; gravity = Gravity.CENTER; setTypeface(typeface, Typeface.BOLD)
-        setTextColor(accent); background = round(dp(10), Color.WHITE, stroke = true)
+        setTextColor(accent); background = round(dp(10), Guofeng.CARD, stroke = true)
         setPadding(dp(14), dp(10), dp(14), dp(10))
         layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) }
         setOnClickListener { onClick() }
     }
 
-    private fun round(radius: Int, color: Int, stroke: Boolean = false) = GradientDrawable().apply {
-        cornerRadius = radius.toFloat(); setColor(color); if (stroke) setStroke(dp(1), accent)
-    }
+    private fun round(radius: Int, color: Int, stroke: Boolean = false) =
+        Guofeng.round(
+            this,
+            (radius / resources.displayMetrics.density).toInt().coerceAtLeast(1),
+            color,
+            if (stroke) Guofeng.BORDER_JADE else null
+        )
 
     override fun onDestroy() { super.onDestroy(); worker.shutdownNow() }
 

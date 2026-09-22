@@ -172,41 +172,57 @@ class SettingsActivity : AppCompatActivity() {
         // --- 回复接口 ---
         val replyCard = card()
         replyCard.addView(cardTitle("回复接口"))
-        replyCard.addView(text("生成 3 条候选回复。任何 OpenAI 兼容地址，填到 /v1 为止。", 12f, sub))
+        replyCard.addView(text(
+            "生成 3 条候选回复。可与判断引擎使用同一服务商；留空 Key 只在同 host 时继承。",
+            12f, sub
+        ))
 
         val replyBaseEdit = edit(prefs.replyBaseUrl, Prefs.DEFAULT_REPLY_BASE)
         val replyModelEdit = edit(prefs.replyModel, Prefs.DEFAULT_REPLY_MODEL)
         val replyIdx = when (prefs.replyBaseUrl.trim().trimEnd('/')) {
             Prefs.DEFAULT_REPLY_BASE -> 0
             Prefs.DEEPSEEK_BASE -> 1
-            Prefs.DASHSCOPE_BASE -> 2
-            else -> 3
+            Prefs.GLM_BASE -> 2
+            Prefs.DASHSCOPE_BASE -> 3
+            else -> 4
         }
         replyCard.addView(pills(
-            listOf("OpenRouter", "DeepSeek 官方", "通义兼容", "自定义"), replyIdx) { idx ->
+            listOf("OpenRouter", "DeepSeek 官方", "GLM-4.7", "通义兼容", "自定义"), replyIdx) { idx ->
             when (idx) {
                 0 -> { replyBaseEdit.setText(Prefs.DEFAULT_REPLY_BASE); replyModelEdit.setText(Prefs.DEFAULT_REPLY_MODEL) }
                 1 -> { replyBaseEdit.setText(Prefs.DEEPSEEK_BASE); replyModelEdit.setText(Prefs.DEEPSEEK_MODEL) }
-                2 -> { replyBaseEdit.setText(Prefs.DASHSCOPE_BASE); replyModelEdit.setText(Prefs.DASHSCOPE_MODEL) }
+                2 -> { replyBaseEdit.setText(Prefs.GLM_BASE); replyModelEdit.setText(Prefs.GLM_MODEL) }
+                3 -> { replyBaseEdit.setText(Prefs.DASHSCOPE_BASE); replyModelEdit.setText(Prefs.DASHSCOPE_MODEL) }
             }
         })
         replyCard.addView(label("Base URL"))
         replyCard.addView(replyBaseEdit)
         replyCard.addView(label("密钥"))
-        replyCard.addView(edit(prefs.replyKey, "留空则用判断接口密钥", password = true).also { replyKeyEdit = it })
+        replyCard.addView(edit(
+            prefs.replyKey,
+            "留空时，仅同服务商可继承判断密钥",
+            password = true
+        ).also { replyKeyEdit = it })
         replyCard.addView(label("模型"))
         replyCard.addView(replyModelEdit)
         val replyResult = resultText()
         replyCard.addView(cardBtn("测试回复") {
             val base = replyBaseEdit.text.toString().trim()
             val model = replyModelEdit.text.toString().trim()
+            val judgeBaseNow = judgeBaseEdit.text.toString().trim()
+            val judgeProviderNow = resolveJudgeProvider(judgeProviderIdx, judgeBaseNow)
             val probe = draftPrefs(SCRATCH_REPLY) {
+                judgeProvider = judgeProviderNow
+                judgeBaseUrl = judgeBaseNow.ifBlank { defaultJudgeBase(judgeProviderNow) }
                 judgeKey = judgeKeyEdit.text.toString().trim()
                 replyBaseUrl = base.ifBlank { Prefs.DEFAULT_REPLY_BASE }
                 replyKey = replyKeyEdit.text.toString().trim()
                 replyModel = model.ifBlank { Prefs.DEFAULT_REPLY_MODEL }
             }
-            if (probe.effectiveReplyKey().isBlank()) { replyResult.text = "请先填密钥（或填判断接口密钥）"; return@cardBtn }
+            if (probe.effectiveReplyKey().isBlank()) {
+                replyResult.text = "请填写回复密钥；仅同服务商时可继承判断密钥"
+                return@cardBtn
+            }
             replyResult.text = "测试中…"
             worker.execute {
                 val t0 = System.currentTimeMillis()
@@ -246,7 +262,11 @@ class SettingsActivity : AppCompatActivity() {
         visionCard.addView(label("Base URL"))
         visionCard.addView(visionBaseEdit)
         visionCard.addView(label("密钥"))
-        visionCard.addView(edit(prefs.visionKey, "留空则用回复接口密钥", password = true).also { visionKeyEdit = it })
+        visionCard.addView(edit(
+            prefs.visionKey,
+            "留空时，仅同服务商可继承回复/判断密钥",
+            password = true
+        ).also { visionKeyEdit = it })
         visionCard.addView(label("模型"))
         visionCard.addView(visionModelEdit)
         val visionResult = resultText()
@@ -256,7 +276,11 @@ class SettingsActivity : AppCompatActivity() {
                 visionResult.text = GUARD_NO_VISION
                 return@cardBtn
             }
+            val judgeBaseNow = judgeBaseEdit.text.toString().trim()
+            val judgeProviderNow = resolveJudgeProvider(judgeProviderIdx, judgeBaseNow)
             val probe = draftPrefs(SCRATCH_VISION) {
+                judgeProvider = judgeProviderNow
+                judgeBaseUrl = judgeBaseNow.ifBlank { defaultJudgeBase(judgeProviderNow) }
                 judgeKey = judgeKeyEdit.text.toString().trim()
                 replyBaseUrl = replyBaseEdit.text.toString().trim().ifBlank { Prefs.DEFAULT_REPLY_BASE }
                 replyKey = replyKeyEdit.text.toString().trim()
@@ -264,7 +288,10 @@ class SettingsActivity : AppCompatActivity() {
                 visionKey = visionKeyEdit.text.toString().trim()
                 visionModel = visionModelEdit.text.toString().trim().ifBlank { Prefs.DEFAULT_VISION_MODEL }
             }
-            if (probe.effectiveVisionKey().isBlank()) { visionResult.text = "请先填密钥（或填回复/判断接口密钥）"; return@cardBtn }
+            if (probe.effectiveVisionKey().isBlank()) {
+                visionResult.text = "请填写视觉密钥；仅同服务商时可继承其它密钥"
+                return@cardBtn
+            }
             visionResult.text = "测试中…"
             worker.execute {
                 val t0 = System.currentTimeMillis()

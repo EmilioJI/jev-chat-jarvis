@@ -166,9 +166,19 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
 
     // ------------------------------------------------------------- existing
 
-    /** Free-text describing who the other person is; goes into the judgment engine context. */
+    /**
+     * Optional global fallback relationship. Per-contact relationship from the
+     * knowledge base takes priority at analysis time. Empty means unknown.
+     *
+     * Older acceptance builds persisted a partner-specific demo default. Treat
+     * that exact legacy value as unset so upgrades do not misclassify unrelated
+     * contacts as a partner conversation.
+     */
     var relationship: String
-        get() = sp.getString(K_REL, DEFAULT_REL) ?: DEFAULT_REL
+        get() {
+            val raw = sp.getString(K_REL, DEFAULT_REL) ?: DEFAULT_REL
+            return if (raw.trim() == LEGACY_DEFAULT_REL) DEFAULT_REL else raw
+        }
         set(v) = sp.edit().putString(K_REL, v).apply()
 
     /** Master on/off for showing the overlay + running analysis. */
@@ -347,6 +357,8 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
         const val DEFAULT_VISION_MODEL = "qwen/qwen2.5-vl-72b-instruct"
         const val DASHSCOPE_VISION_MODEL = "qwen-vl-max"
 
-        const val DEFAULT_REL = "对方是我的伴侣；from=me 的是我发的，from=other 的是对方发的"
+        private const val LEGACY_DEFAULT_REL =
+            "对方是我的伴侣；from=me 的是我发的，from=other 的是对方发的"
+        const val DEFAULT_REL = ""
     }
 }

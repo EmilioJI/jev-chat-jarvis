@@ -81,7 +81,7 @@ jobs:
           test -x "$AAPT"
           BADGING="$("$AAPT" dump badging "$APK")"
           printf '%s\n' "$BADGING" | grep -F "package: name='com.jev.probe.guofeng'"
-          printf '%s\n' "$BADGING" | grep -F "application-label:'Jev聊天助手'"
+          printf '%s\n' "$BADGING" | grep -F "application-label:'小书童·知言'"
           printf '%s\n' "$BADGING" | grep -F "targetSdkVersion:'36'"
           printf '%s\n' "$BADGING" | grep -F "compileSdkVersion='36'"
 

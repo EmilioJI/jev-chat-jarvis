@@ -279,3 +279,47 @@ PASS 条件：本地默认不上传；远程显式选择且 fallback 正常。
 - 微信 / QQ / X / 飞书回归无 P0/P1
 - 不存在错会话填入
 - 如果准备 Google Play 分发，必须完成 AccessibilityService declaration / prominent disclosure / Data Safety / privacy policy 的最终一致性检查
+
+
+## 2026-09-22 真机补充结论
+
+### vivo 应用分身 / 微信 B
+
+在 vivo X100 Ultra（Android 16）实测，主微信运行于 Android user 0，应用分身微信运行于
+user 999。Jev 国风包在 user 0 的 AccessibilityService 可以正常 Bound；user 999 中即使通过
+ADB 临时执行 `install-existing`，第三方 AccessibilityService 仍不能 Bound，且
+`SYSTEM_ALERT_WINDOW` 被系统保持为非 allow 状态。
+
+因此“微信 B 无悬浮窗”不是微信包名适配遗漏，而是 vivo 应用分身的跨-user 隔离。
+当前产品基线以主用户中的微信/QQ/飞书/X 为完整能力范围；应用分身后续只能另做受限兼容路径，
+不能宣称与主用户完整等价。
+
+### 实测延迟与 2026-09-22 优化
+
+同一真机、同一当前网络与已配置服务下，设置页连通性测试记录：
+
+- Bocha Jev 判断：509 ms。
+- GLM-5.3-Flash 回复：1161 ms。
+
+因此体感延迟的主要结构性来源不是 GLM 单次调用本身，而是旧实时链路的 800 ms 防抖以及
+“GLM 生成 3 条候选 -> 再等待 Jev 排序”串行尾延迟。当前国风分支已改为：
+
+- 自动分析防抖 800 ms -> 350 ms；
+- GLM 候选生成后立即显示“候选回复 · 正在智能排序”；
+- Jev 排序完成后原位升级为“推荐回复 · 智能排序”；
+- 排序失败时保留可复制/填入的候选，不再让排序故障阻塞回复使用。
+
+### Debug 签名注意事项
+
+Run #33 的已安装国风 APK SHA-256 为
+`82d130d950182804cb7c2455f7c9c8adc3170f9efabe962ca593a41efc73244d`，
+其签名证书与当前持久开发机的 debug keystore 不一致。已确认这是 GitHub-hosted runner
+临时 debug signing 带来的不可覆盖更新问题。
+
+因此 GitHub-hosted PR Gate 产出的 debug APK 只作为 CI 验证产物，不再视为长期真机升级包；
+常规 PR 也不再自动上传该 APK。后续真机长期基线应使用持久签名。当前已安装包未卸载，
+现有 API Key、知识库与本机配置均未破坏。
+
+本轮最新代码 `feature/guofeng-ui` HEAD `fea3e4d` 已在本机实际执行
+`assembleDebug` 成功；生成 APK SHA-256：
+`519bac498ef68b961378a754124a37ff5ff601bdc26225218c0ae4858b99eaf2`。

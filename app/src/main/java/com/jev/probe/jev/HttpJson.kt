@@ -56,6 +56,9 @@ object HttpJson {
         extraHeaders: Map<String, String> = emptyMap()
     ): JSONObject {
         validateEndpoint(url, route)
+        // Apply product-wide model latency policy in one place so no route can
+        // accidentally forget the provider-specific thinking knob.
+        val tunedBody = ModelRequestTuning.apply(body)
         var attempt = 0
         var last: ApiException? = null
         while (attempt < MAX_ATTEMPTS) {
@@ -74,7 +77,7 @@ object HttpJson {
                     setRequestProperty("Content-Type", "application/json; charset=utf-8")
                     extraHeaders.forEach { (k, v) -> setRequestProperty(k, v) }
                 }
-                val bytes = body.toString().toByteArray(Charsets.UTF_8)
+                val bytes = tunedBody.toString().toByteArray(Charsets.UTF_8)
                 conn.outputStream.use { os: OutputStream -> os.write(bytes) }
                 val code = conn.responseCode
                 if (code == 429 || code == 529) {
@@ -164,7 +167,7 @@ object HttpJson {
     /** OpenRouter wants attribution headers; other hosts reject unknown ones politely. */
     fun headersFor(url: String): Map<String, String> =
         if (url.contains("openrouter.ai", ignoreCase = true))
-            mapOf("HTTP-Referer" to "https://jev-assistant.local", "X-Title" to "Jev Assistant")
+            mapOf("HTTP-Referer" to "https://jev-assistant.local", "X-Title" to "Xiaoshutong Zhiyan")
         else emptyMap()
 
     /** Human-readable transport failures (no key material ever appears here). */

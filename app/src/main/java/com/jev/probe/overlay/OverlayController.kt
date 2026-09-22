@@ -294,6 +294,24 @@ class OverlayController(private val ctx: Context) {
 
     // ------------------------------------------------------------ public API
 
+    /**
+     * Compatibility mode for a visible app/window whose accessibility tree is
+     * unavailable to this service (notably vivo clone-user apps). Never reuse a
+     * prior conversation snapshot here: the only safe action is a fresh screen
+     * capture initiated by the user.
+     */
+    fun showCaptureOnly(note: String? = null) {
+        resetForNewConversation()
+        ensureRoot()
+        bubble?.alpha = 0.75f
+        val views = ArrayList<View>()
+        note?.takeIf { it.isNotBlank() }?.let {
+            views.add(line(it, "#5C6560", 12f, true))
+        }
+        views.add(bigButton("截屏识别当前对话") { onOcrCapture?.invoke() })
+        setContent(views)
+    }
+
     fun showIdle(title: String?) {
         ensureRoot(); bubble?.alpha = 0.55f
         // Either there is genuinely nothing to show yet, or the panel is empty

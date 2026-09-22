@@ -336,9 +336,13 @@ class SettingsActivity : AppCompatActivity() {
         // =================== 分析 ===================
         root.addView(section("分析"))
         val card2 = card()
-        card2.addView(label("关系描述（给判断引擎用）"))
-        val relEdit = edit(prefs.relationship, Prefs.DEFAULT_REL)
+        card2.addView(label("默认关系（可留空，联系人关系优先）"))
+        val relEdit = edit(prefs.relationship, "例如：同事、客户、家人；联系人可单独设置")
         card2.addView(relEdit)
+        card2.addView(text(
+            "会自动读取当前会话标题（微信备注名/昵称、群名等）作为身份；不会仅凭昵称猜关系。联系人档案里的关系优先于这里。",
+            11f, sub
+        ))
         card2.addView(label("会话白名单（每行一个关键词，空=所有会话）"))
         val wlEdit = edit(prefs.whitelist.joinToString("\n"), "留空则对所有会话生效").apply {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE; minLines = 2

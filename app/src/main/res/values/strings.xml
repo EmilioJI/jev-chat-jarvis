@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">Jev聊天助手</string>
-    <string name="a11y_desc_disguised">读取当前聊天窗口文字，用于生成回复建议。不会自动发送消息。</string>
+    <string name="a11y_intro_disguised">读取当前可见聊天内容并显示分析与候选回复；不会自动发送消息。</string>
+    <string name="a11y_desc_disguised">读取当前活动聊天窗口中你可见的文字和控件结构；当你开启 OCR 兜底时可截取当前聊天窗口。默认 OCR 在本机；只有你明确选择视觉 API 后才会上传裁剪后的聊天区域。分析内容会发送给你自己配置的模型服务商。不会自动点击发送。</string>
 </resources>

@@ -13,7 +13,6 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
-import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -209,7 +208,7 @@ class OverlayController(private val ctx: Context) {
 
     private fun attachBubbleTouch(v: View, params: WindowManager.LayoutParams) {
         var startX = 0; var startY = 0; var touchX = 0f; var touchY = 0f
-        var moved = false; var downTime = 0L; var longFired = false
+        var moved = false; var longFired = false
         val longPress = Runnable {
             if (!moved) { longFired = true; showBubbleMenu() }
         }
@@ -217,7 +216,7 @@ class OverlayController(private val ctx: Context) {
             when (e.action) {
                 MotionEvent.ACTION_DOWN -> {
                     startX = params.x; startY = params.y; touchX = e.rawX; touchY = e.rawY
-                    moved = false; longFired = false; downTime = System.currentTimeMillis()
+                    moved = false; longFired = false
                     v.postDelayed(longPress, 500); true
                 }
                 MotionEvent.ACTION_MOVE -> {
@@ -305,7 +304,12 @@ class OverlayController(private val ctx: Context) {
         // stale conversation) — either way an empty panel must never stay
         // literally blank.
         if (lastJudgment == null || contentBox?.childCount == 0) {
-            setContent(listOf(bigButton("分析当前对话") { onManualAnalyze?.invoke() }))
+            val views = ArrayList<View>()
+            title?.takeIf { it.isNotBlank() }?.let {
+                views.add(line("当前会话 · ${it.take(24)}", "#5C6560", 12f, true))
+            }
+            views.add(bigButton("分析当前对话") { onManualAnalyze?.invoke() })
+            setContent(views)
         }
     }
 

@@ -14,15 +14,18 @@
 - APK SHA-256:
   `42bf16691c25240e2cf1b5ca9270d1dc773c316f3515dd93b07b097805c6fa54`
 
-### B — Play 合规 A/B 实验候选
+### B — Play 合规 A/B 实验候选 v3
 
 - package: `com.jev.probe.compliance`
 - label: `Jev聊天助手·合规A/B`
 - `isAccessibilityTool=false`
-- source commit: `ce0f6a0d0266bad2fea2c180fb409479ef2bf798`
-- Run #25: `35718845503`
+- source commit: `73cd437f73965771cf46478b6413c217db9633dd`
+- Run #29: `35721226611`
 - APK SHA-256:
-  `2569e46c278eb91f2510419da8a1e039c90ec81b176e6271d72db706dd7832b5`
+  `4b04615fa0f73d8ca55b21233df55e4f36d52e61f516ee704d2e4b716520aa62`
+
+B v3 与 A 使用同一最新 transport-hardened 核心代码基线；除 `isAccessibilityTool`
+以及为并行安装而使用的 package / launcher label 外，不引入其它业务行为差异。
 
 A 与 B 可与官方 `com.jev.probe` 并行安装。
 

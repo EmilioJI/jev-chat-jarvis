@@ -217,8 +217,11 @@ open class ChatCaptureService : AccessibilityService() {
                 if (fg != activePkg) invalidateAnalysis()
             }
             if (fg != null && fg !in adapters) {
-                val drop = fg == packageName ||
-                    fg == "com.android.systemui"
+                // Keep the collapsed bubble even over our own activity.
+                // Clone-user transitions may emit no accessibility event back to
+                // user 0, so destroying the overlay here can make it impossible
+                // to re-create when the user enters WeChat B.
+                val drop = fg == "com.android.systemui"
                 if (!drop) {
                     DiagnosticsStore.record(
                         this,
@@ -242,7 +245,8 @@ open class ChatCaptureService : AccessibilityService() {
                     } else {
                         val note = when {
                             fg == "com.vivo.doubleinstance" -> "分身应用兼容模式"
-                            fg.contains("launcher", ignoreCase = true) ||
+                            fg == packageName ||
+                                fg.contains("launcher", ignoreCase = true) ||
                                 fg == "com.miui.home" -> null
                             else -> "当前应用需截图识别"
                         }

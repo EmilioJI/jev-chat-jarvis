@@ -490,7 +490,7 @@ class SettingsActivity : AppCompatActivity() {
     private fun paintPill(v: TextView, on: Boolean) {
         v.setTextColor(if (on) Guofeng.CARD else sub)
         v.typeface = Guofeng.sans(on)
-        v.background = round(dp(9), if (on) accent else pillOff)
+        v.background = round(9, if (on) accent else pillOff)
     }
 
     private fun toggleRow(labelText: String, initial: Boolean): LinearLayout {
@@ -505,14 +505,14 @@ class SettingsActivity : AppCompatActivity() {
             text = if (initial) "开" else "关"; textSize = 13f; gravity = Gravity.CENTER
             typeface = Guofeng.sans(true)
             setTextColor(if (initial) Guofeng.CARD else sub)
-            background = round(dp(10), if (initial) accent else Guofeng.PAPER_DEEP)
+            background = round(10, if (initial) accent else Guofeng.PAPER_DEEP)
             setPadding(dp(18), dp(6), dp(18), dp(6))
         }
         sw.setOnClickListener {
             val now = !((row.tag as? Boolean) ?: true); row.tag = now
             sw.text = if (now) "开" else "关"
             sw.setTextColor(if (now) Guofeng.CARD else sub)
-            sw.background = round(dp(10), if (now) accent else Guofeng.PAPER_DEEP)
+            sw.background = round(10, if (now) accent else Guofeng.PAPER_DEEP)
         }
         row.addView(lab); row.addView(sw)
         return row
@@ -567,7 +567,7 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun primaryBtn(label: String, onClick: () -> Unit) = TextView(this).apply {
         text = label; textSize = 15f; gravity = Gravity.CENTER; typeface = Guofeng.serif(true)
-        setTextColor(Guofeng.CARD); background = round(dp(12), accent)
+        setTextColor(Guofeng.CARD); background = round(12, accent)
         setPadding(dp(16), dp(13), dp(16), dp(13))
         layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(18) }
@@ -577,17 +577,17 @@ class SettingsActivity : AppCompatActivity() {
     /** Outlined button sized for inside a card. */
     private fun cardBtn(label: String, onClick: () -> Unit) = TextView(this).apply {
         text = label; textSize = 14f; gravity = Gravity.CENTER; typeface = Guofeng.sans(true)
-        setTextColor(accent); background = round(dp(10), Guofeng.CARD, stroke = true)
+        setTextColor(accent); background = round(10, Guofeng.CARD, stroke = true)
         setPadding(dp(14), dp(10), dp(14), dp(10))
         layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) }
         setOnClickListener { onClick() }
     }
 
-    private fun round(radius: Int, color: Int, stroke: Boolean = false) =
+    private fun round(radiusDp: Int, color: Int, stroke: Boolean = false) =
         Guofeng.round(
             this,
-            (radius / resources.displayMetrics.density).toInt().coerceAtLeast(1),
+            radiusDp,
             color,
             if (stroke) Guofeng.BORDER_JADE else null
         )

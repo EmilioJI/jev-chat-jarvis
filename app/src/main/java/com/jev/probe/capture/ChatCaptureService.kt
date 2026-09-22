@@ -165,6 +165,15 @@ open class ChatCaptureService : AccessibilityService() {
         }
         // Bubble menu: one manual screenshot + OCR, for any app at all.
         overlay?.onOcrCapture = { ocrCaptureManual() }
+
+        // Keep a collapsed entry point alive independently of chat-tree timing.
+        // On clone-user apps (e.g. vivo app clone / user 999) accessibility
+        // events may never reach this user-0 service, so the bubble itself must
+        // not depend on receiving a readable chat window first.
+        if (prefs.enabled) {
+            main.post { overlay?.showCaptureOnly() }
+        }
+
         // Keep the process at foreground importance so MIUI does not freeze us.
         runCatching { KeepAliveService.start(this) }
         // Load the bundled OCR model now, off the main thread: the first
@@ -209,8 +218,6 @@ open class ChatCaptureService : AccessibilityService() {
             }
             if (fg != null && fg !in adapters) {
                 val drop = fg == packageName ||
-                    fg.contains("launcher", ignoreCase = true) ||
-                    fg == "com.miui.home" ||
                     fg == "com.android.systemui"
                 if (!drop) {
                     DiagnosticsStore.record(
@@ -233,10 +240,11 @@ open class ChatCaptureService : AccessibilityService() {
                     if (drop) {
                         overlay?.hide()
                     } else {
-                        val note = if (fg == "com.vivo.doubleinstance") {
-                            "分身应用兼容模式"
-                        } else {
-                            "当前应用需截图识别"
+                        val note = when {
+                            fg == "com.vivo.doubleinstance" -> "分身应用兼容模式"
+                            fg.contains("launcher", ignoreCase = true) ||
+                                fg == "com.miui.home" -> null
+                            else -> "当前应用需截图识别"
                         }
                         overlay?.showCaptureOnly(note)
                     }

@@ -21,6 +21,7 @@ import androidx.appcompat.app.AppCompatActivity
 import com.jev.probe.core.ChatSnapshot
 import com.jev.probe.core.Msg
 import com.jev.probe.core.Prefs
+import com.jev.probe.core.SecuritySelfCheck
 import com.jev.probe.core.kb.KbSelfCheck
 import com.jev.probe.core.kb.KbStore
 import com.jev.probe.jev.JevClient
@@ -379,8 +380,13 @@ class SettingsActivity : AppCompatActivity() {
             setOnClickListener {
                 kbResult.text = "自检中…"
                 worker.execute {
-                    val out = try { KbSelfCheck.run(this@SettingsActivity) }
-                    catch (e: Exception) { "自检异常：${e.javaClass.simpleName} ${e.message ?: ""}" }
+                    val out = try {
+                        val kb = KbSelfCheck.run(this@SettingsActivity)
+                        val security = SecuritySelfCheck.run(this@SettingsActivity)
+                        kb + "\n" + security
+                    } catch (e: Exception) {
+                        "自检异常：${e.javaClass.simpleName} ${e.message ?: ""}"
+                    }
                     main.post { kbResult.text = out }
                 }
             }

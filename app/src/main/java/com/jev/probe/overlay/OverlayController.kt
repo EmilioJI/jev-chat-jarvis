@@ -32,7 +32,7 @@ import kotlin.math.roundToInt
 /**
  * Floating overlay: a small draggable bubble that expands into a translucent
  * panel showing the selected judgment engine's read plus 3 ranked candidate replies. All
- * actions are copy / fill — never send.
+ * actions are user-initiated analysis and copy — never UI automation or send.
  *
  * Design goals: let the chat show through (adjustable opacity), keep the signal
  * scannable (danger badge + intent headline + reply cards), and stay out of the
@@ -72,7 +72,6 @@ class OverlayController(private val ctx: Context) {
     fun isShowing(): Boolean = root != null
 
     private var lastJudgment: Analysis? = null
-    private var lastFill: ((String) -> Unit)? = null
 
     /** Set when [showReplies] was handed a draftAndRank failure, so the panel
      *  can say so instead of silently showing "（未生成候选回复）". */
@@ -375,7 +374,6 @@ class OverlayController(private val ctx: Context) {
      */
     fun resetForNewConversation() {
         lastJudgment = null
-        lastFill = null
         noteText = null
         replyError = null
         replySorting = false
@@ -445,11 +443,8 @@ class OverlayController(private val ctx: Context) {
     fun showReplies(
         ranked: List<RankedReply>,
         error: String? = null,
-        sorting: Boolean = false,
-        allowDirectFill: Boolean = true,
-        onFill: (String) -> Unit
+        sorting: Boolean = false
     ) {
-        lastFill = onFill
         replyError = error
         replySorting = sorting
         val a = lastJudgment?.copy(rankedReplies = ranked) ?: return
@@ -517,14 +512,11 @@ class OverlayController(private val ctx: Context) {
         if (generating) {
             views.add(hint("生成中…"))
         } else {
-            val fill = lastFill ?: {}
             a.rankedReplies.forEachIndexed { i, r ->
                 views.add(replyCard(
                     i + 1,
                     r.text,
-                    if (replySorting || rankingUnavailable) null else (r.prob * 100).roundToInt(),
-                    allowDirectFill,
-                    fill
+                    if (replySorting || rankingUnavailable) null else (r.prob * 100).roundToInt()
                 ))
             }
             if (rankingUnavailable) {
@@ -559,7 +551,7 @@ class OverlayController(private val ctx: Context) {
         return row
     }
 
-    private fun replyCard(rank: Int, text: String, pct: Int?, allowDirectFill: Boolean, onFill: (String) -> Unit): View {
+    private fun replyCard(rank: Int, text: String, pct: Int?): View {
         val top = pct != null && rank == 1
         val cardBg = if (top) Guofeng.JADE_PALE else Guofeng.CARD_SOFT
         val c = LinearLayout(ctx).apply {
@@ -584,17 +576,7 @@ class OverlayController(private val ctx: Context) {
             setPadding(0, dp(3), 0, dp(7)); setLineSpacing(dp(2).toFloat(), 1f)
         })
         val btns = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
-        btns.addView(pill("复制", !allowDirectFill) { copy(text) })
-        if (allowDirectFill) {
-            // Non-WeChat compatibility path only. WeChat formal mode never
-            // performs Accessibility UI writes; an IME integration will replace
-            // this path for safe direct insertion later.
-            btns.addView(pill("填入", true) {
-                android.util.Log.d("JEVASSIST", "overlay: fill tapped")
-                onFill(text)
-                if (expanded) toggle()
-            })
-        }
+        btns.addView(pill("复制回复", true) { copy(text) })
         c.addView(btns)
         return c
     }

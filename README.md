@@ -107,7 +107,7 @@ QQ、X 全程只有一个 Activity，判「是不是聊天窗」要看树里有�
 
 ## 构建
 
-JDK 17 + Android SDK（platform 35 / build-tools 35）。
+JDK 17 + Android SDK（platform 36 / build-tools 35.0.0）。仓库固定使用 Gradle Wrapper 8.11.1 + AGP 8.10.1。
 
 ```bash
 ./gradlew assembleDebug      # app/build/outputs/apk/debug/app-debug.apk

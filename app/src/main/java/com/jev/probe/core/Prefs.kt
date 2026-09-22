@@ -2,6 +2,7 @@ package com.jev.probe.core
 
 import android.content.Context
 import android.util.Log
+import java.net.URI
 
 /**
  * App-private config store. Holds the three API routes (judge / reply / vision),
@@ -187,11 +188,37 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
 
     // ------------------------------------------------------------- helpers
 
-    /** Reply route key, falling back to the judge key. */
-    fun effectiveReplyKey(): String = replyKey.ifBlank { judgeKey }
+    /**
+     * Reply key. A blank key inherits the judge key only when both routes point
+     * at the same host. Never send one provider's credential to another host.
+     */
+    fun effectiveReplyKey(): String {
+        if (replyKey.isNotBlank()) return replyKey
+        return if (sameCredentialHost(replyBaseUrl, judgeBaseUrl)) judgeKey else ""
+    }
 
-    /** Vision route key, falling back to reply then judge. */
-    fun effectiveVisionKey(): String = visionKey.ifBlank { effectiveReplyKey() }
+    /**
+     * Vision key with the same host-bound inheritance rule. Prefer an explicit
+     * vision key, then a same-host reply credential, then a same-host judge key.
+     */
+    fun effectiveVisionKey(): String {
+        if (visionKey.isNotBlank()) return visionKey
+        val replyEffective = effectiveReplyKey()
+        if (replyEffective.isNotBlank() && sameCredentialHost(visionBaseUrl, replyBaseUrl))
+            return replyEffective
+        if (judgeKey.isNotBlank() && sameCredentialHost(visionBaseUrl, judgeBaseUrl))
+            return judgeKey
+        return ""
+    }
+
+    private fun sameCredentialHost(a: String, b: String): Boolean {
+        fun host(s: String): String? = runCatching {
+            URI(s.trim()).host?.lowercase()
+        }.getOrNull()
+        val ha = host(a)
+        val hb = host(b)
+        return ha != null && hb != null && ha == hb
+    }
 
     /** Full POST URL for the selected judgment engine. */
     fun judgeEndpoint(): String {
@@ -264,13 +291,17 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
         const val OCR_MLKIT = "mlkit"
         const val OCR_VISION = "vision"
 
+        // Shared GLM-4.7 OpenAI-compatible endpoint.
+        const val GLM_BASE = "https://open.bigmodel.cn/api/paas/v4"
+        const val GLM_MODEL = "glm-4.7"
+
         // Judge route presets.
         const val DEFAULT_JUDGE_BASE_OPENROUTER = "https://openrouter.ai/api"
         const val DEFAULT_JUDGE_MODEL_OPENROUTER = "typesafe/jev-1.13"
         const val DEFAULT_JUDGE_BASE_TYPESAFE = "https://api.typesafe.ai"
         const val DEFAULT_JUDGE_MODEL_TYPESAFE = "jev-latest"
-        const val DEFAULT_JUDGE_BASE_GLM47 = "https://open.bigmodel.cn/api/paas/v4"
-        const val DEFAULT_JUDGE_MODEL_GLM47 = "glm-4.7"
+        const val DEFAULT_JUDGE_BASE_GLM47 = GLM_BASE
+        const val DEFAULT_JUDGE_MODEL_GLM47 = GLM_MODEL
 
         // Reply route presets (OpenAI-compatible chat completions).
         const val DEFAULT_REPLY_BASE = "https://openrouter.ai/api/v1"

@@ -93,7 +93,7 @@ class KnowledgeActivity : AppCompatActivity() {
                     ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = dp(8) }
                 setTextColor(if (i == tab) Guofeng.CARD else Guofeng.GOLD)
                 typeface = Guofeng.serif(i == tab)
-                background = round(dp(12), if (i == tab) Guofeng.JADE_DEEP else pillOff)
+                background = round(12, if (i == tab) Guofeng.JADE_DEEP else pillOff)
                 setOnClickListener { tab = i; render() }
             }
             row.addView(pill)
@@ -359,7 +359,7 @@ class KnowledgeActivity : AppCompatActivity() {
         text = labelText; textSize = 14f; gravity = Gravity.CENTER
         typeface = Guofeng.serif(true)
         setTextColor(if (primary) Guofeng.CARD else Guofeng.JADE_DEEP)
-        background = round(dp(13), if (primary) Guofeng.JADE_DEEP else Guofeng.CARD, stroke = !primary)
+        background = round(13, if (primary) Guofeng.JADE_DEEP else Guofeng.CARD, stroke = !primary)
         setPadding(dp(12), dp(11), dp(12), dp(11))
         layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             .apply { rightMargin = dp(8) }
@@ -370,7 +370,7 @@ class KnowledgeActivity : AppCompatActivity() {
         text = if (on) "开" else "关"; textSize = 13f; gravity = Gravity.CENTER
         typeface = Guofeng.sans(true)
         setTextColor(if (on) Guofeng.CARD else sub)
-        background = round(dp(12), if (on) Guofeng.JADE else Guofeng.PAPER_DEEP)
+        background = round(12, if (on) Guofeng.JADE else Guofeng.PAPER_DEEP)
         setPadding(dp(16), dp(6), dp(16), dp(6))
         setOnClickListener { onClick() }
     }
@@ -387,14 +387,14 @@ class KnowledgeActivity : AppCompatActivity() {
             text = if (initial) "开" else "关"; textSize = 13f; gravity = Gravity.CENTER
             typeface = Guofeng.sans(true)
             setTextColor(if (initial) Guofeng.CARD else sub)
-            background = round(dp(12), if (initial) Guofeng.JADE else Guofeng.PAPER_DEEP)
+            background = round(12, if (initial) Guofeng.JADE else Guofeng.PAPER_DEEP)
             setPadding(dp(18), dp(6), dp(18), dp(6))
         }
         sw.setOnClickListener {
             val now = !((row.tag as? Boolean) ?: true); row.tag = now
             sw.text = if (now) "开" else "关"
             sw.setTextColor(if (now) Guofeng.CARD else sub)
-            sw.background = round(dp(12), if (now) Guofeng.JADE else Guofeng.PAPER_DEEP)
+            sw.background = round(12, if (now) Guofeng.JADE else Guofeng.PAPER_DEEP)
         }
         row.addView(lab); row.addView(sw)
         return row
@@ -437,10 +437,10 @@ class KnowledgeActivity : AppCompatActivity() {
         typeface = if (serif) Guofeng.serif(bold) else Guofeng.sans(bold)
     }
 
-    private fun round(radius: Int, color: Int, stroke: Boolean = false) =
+    private fun round(radiusDp: Int, color: Int, stroke: Boolean = false) =
         Guofeng.round(
             this,
-            (radius / resources.displayMetrics.density).toInt().coerceAtLeast(1),
+            radiusDp,
             color,
             if (stroke) Guofeng.BORDER_JADE else null
         )

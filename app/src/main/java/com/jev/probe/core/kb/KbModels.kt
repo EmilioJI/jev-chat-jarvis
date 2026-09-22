@@ -35,8 +35,8 @@ data class Contact(
     val notes: String = "",
     /** Model-generated rolling summary; created only after explicit opt-in. */
     val autoSummary: String = "",
-    /** Log size covered by [autoSummary], used to avoid re-summarizing every turn. */
-    val autoSummaryLogSize: Int = 0,
+    /** Newest chat timestamp covered by [autoSummary]. */
+    val autoSummaryThroughTs: Long = 0L,
     val updatedAt: Long = System.currentTimeMillis()
 )
 

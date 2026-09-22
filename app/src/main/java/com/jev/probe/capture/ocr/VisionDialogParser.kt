@@ -12,7 +12,8 @@ import com.jev.probe.core.Msg
 object VisionDialogParser {
 
     private val linePattern = Regex(
-        """^(?:[-*]\\s*)?(我|自己|me|Me|ME|对方|对面|other|Other|OTHER)\\s*[:：]\\s*(.+)$"""
+        """^(?:[-*]\s*)?(我|自己|me|对方|对面|other)\s*[:：]\s*(.+)$""",
+        RegexOption.IGNORE_CASE
     )
 
     fun parse(raw: String): List<Msg> {

@@ -1,1 +1,54 @@
-package com.jev.probe.capture.ocr\n\nimport com.jev.probe.core.Msg\n\n/**\n * Strict parser for the remote vision OCR contract.\n *\n * Only explicitly labelled speaker lines are accepted. Unlabelled prose,\n * markdown fences and explanations are ignored instead of being guessed into\n * the conversation with the wrong side.\n */\nobject VisionDialogParser {\n\n    private val linePattern = Regex(\n        """^(?:[-*]\\s*)?(我|自己|me|Me|ME|对方|对面|other|Other|OTHER)\\s*[:：]\\s*(.+)$"""\n    )\n\n    fun parse(raw: String): List<Msg> {\n        if (raw.isBlank()) return emptyList()\n        return raw.lineSequence()\n            .map { it.trim() }\n            .filter { it.isNotEmpty() && !it.startsWith("```") }\n            .mapNotNull { line ->\n                val m = linePattern.matchEntire(line) ?: return@mapNotNull null\n                val who = m.groupValues[1].lowercase()\n                val text = m.groupValues[2].trim()\n                if (text.isBlank()) return@mapNotNull null\n                val side = when (who) {\n                    "我", "自己", "me" -> "me"\n                    else -> "other"\n                }\n                Msg(side, text)\n            }\n            .toList()\n    }\n\n    /** Pure deterministic smoke check used by the on-device settings self-test. */\n    fun selfCheck(): Boolean {\n        val sample = """\n            我：收到，我今晚处理\n            对方: 好，别忘了\n            这行没有说话人标签，必须丢弃\n            - Me: 明白\n            * Other：行\n        """.trimIndent()\n        val got = parse(sample)\n        return got == listOf(\n            Msg("me", "收到，我今晚处理"),\n            Msg("other", "好，别忘了"),\n            Msg("me", "明白"),\n            Msg("other", "行")\n        )\n    }\n}\n
+package com.jev.probe.capture.ocr
+
+import com.jev.probe.core.Msg
+
+/**
+ * Strict parser for the remote vision OCR contract.
+ *
+ * Only explicitly labelled speaker lines are accepted. Unlabelled prose,
+ * markdown fences and explanations are ignored instead of being guessed into
+ * the conversation with the wrong side.
+ */
+object VisionDialogParser {
+
+    private val linePattern = Regex(
+        """^(?:[-*]\\s*)?(我|自己|me|Me|ME|对方|对面|other|Other|OTHER)\\s*[:：]\\s*(.+)$"""
+    )
+
+    fun parse(raw: String): List<Msg> {
+        if (raw.isBlank()) return emptyList()
+        return raw.lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("```") }
+            .mapNotNull { line ->
+                val m = linePattern.matchEntire(line) ?: return@mapNotNull null
+                val who = m.groupValues[1].lowercase()
+                val text = m.groupValues[2].trim()
+                if (text.isBlank()) return@mapNotNull null
+                val side = when (who) {
+                    "我", "自己", "me" -> "me"
+                    else -> "other"
+                }
+                Msg(side, text)
+            }
+            .toList()
+    }
+
+    /** Pure deterministic smoke check used by the on-device settings self-test. */
+    fun selfCheck(): Boolean {
+        val sample = """
+            我：收到，我今晚处理
+            对方: 好，别忘了
+            这行没有说话人标签，必须丢弃
+            - Me: 明白
+            * Other：行
+        """.trimIndent()
+        val got = parse(sample)
+        return got == listOf(
+            Msg("me", "收到，我今晚处理"),
+            Msg("other", "好，别忘了"),
+            Msg("me", "明白"),
+            Msg("other", "行")
+        )
+    }
+}

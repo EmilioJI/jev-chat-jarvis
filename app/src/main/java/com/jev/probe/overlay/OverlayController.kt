@@ -71,6 +71,7 @@ class OverlayController(private val ctx: Context) {
     /** Set when [showReplies] was handed a draftAndRank failure, so the panel
      *  can say so instead of silently showing "（未生成候选回复）". */
     private var replyError: String? = null
+    private var replySorting: Boolean = false
 
     private fun dp(v: Int) = TypedValue.applyDimension(
         TypedValue.COMPLEX_UNIT_DIP, v.toFloat(), ctx.resources.displayMetrics).roundToInt()
@@ -326,6 +327,7 @@ class OverlayController(private val ctx: Context) {
         lastFill = null
         noteText = null
         replyError = null
+        replySorting = false
         contentBox?.removeAllViews()
     }
 
@@ -377,9 +379,15 @@ class OverlayController(private val ctx: Context) {
         render(a, generating = true)
     }
 
-    fun showReplies(ranked: List<RankedReply>, error: String? = null, onFill: (String) -> Unit) {
+    fun showReplies(
+        ranked: List<RankedReply>,
+        error: String? = null,
+        sorting: Boolean = false,
+        onFill: (String) -> Unit
+    ) {
         lastFill = onFill
         replyError = error
+        replySorting = sorting
         val a = lastJudgment?.copy(rankedReplies = ranked) ?: return
         lastJudgment = a
         render(a, generating = false)
@@ -433,13 +441,21 @@ class OverlayController(private val ctx: Context) {
         a.tensionResolved?.let { if (it >= 0.7) views.add(line("✓ 紧张已缓解", "#2E7858", 12f)) }
 
         views.add(divider())
-        views.add(line("推荐回复 · 智能排序", "#976F3E", 12f, true))
+        views.add(line(
+            if (replySorting) "候选回复 · 正在智能排序" else "推荐回复 · 智能排序",
+            "#976F3E", 12f, true
+        ))
         if (generating) {
             views.add(hint("生成中…"))
         } else {
             val fill = lastFill ?: {}
             a.rankedReplies.forEachIndexed { i, r ->
-                views.add(replyCard(i + 1, r.text, (r.prob * 100).roundToInt(), fill))
+                views.add(replyCard(
+                    i + 1,
+                    r.text,
+                    if (replySorting) null else (r.prob * 100).roundToInt(),
+                    fill
+                ))
             }
             if (a.rankedReplies.isEmpty()) {
                 val msg = replyError?.let { "回复接口出错：$it" } ?: "（未生成候选回复）"
@@ -471,8 +487,8 @@ class OverlayController(private val ctx: Context) {
         return row
     }
 
-    private fun replyCard(rank: Int, text: String, pct: Int, onFill: (String) -> Unit): View {
-        val top = rank == 1
+    private fun replyCard(rank: Int, text: String, pct: Int?, onFill: (String) -> Unit): View {
+        val top = pct != null && rank == 1
         val cardBg = if (top) Guofeng.JADE_PALE else Guofeng.CARD_SOFT
         val c = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
@@ -483,7 +499,12 @@ class OverlayController(private val ctx: Context) {
             ).apply { topMargin = dp(6) }
         }
         c.addView(TextView(ctx).apply {
-            this.text = if (top) "推荐 · ${pct}%" else "#$rank · ${pct}%"; setTextColor(if (top) Guofeng.JADE_DEEP else Guofeng.GOLD); textSize = 11f
+            this.text = when {
+                pct == null -> "候选 #$rank"
+                top -> "推荐 · ${pct}%"
+                else -> "#$rank · ${pct}%"
+            }
+            setTextColor(if (top) Guofeng.JADE_DEEP else Guofeng.GOLD); textSize = 11f
             typeface = Guofeng.sans(true)
         })
         c.addView(TextView(ctx).apply {

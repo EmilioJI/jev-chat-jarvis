@@ -23,7 +23,7 @@ import com.jev.probe.core.Msg
 import com.jev.probe.core.Prefs
 import com.jev.probe.core.kb.KbSelfCheck
 import com.jev.probe.core.kb.KbStore
-import com.jev.probe.jev.JudgeClient
+import com.jev.probe.jev.JevClient
 import com.jev.probe.jev.ReplyClient
 import com.jev.probe.jev.VisionClient
 import com.jev.probe.ui.Guofeng
@@ -74,20 +74,24 @@ class SettingsActivity : AppCompatActivity() {
         // =================== 接口 ===================
         root.addView(section("接口"))
 
-        // --- 判断接口（Jev） ---
+        // --- 判断引擎 ---
         val judgeCard = card()
-        judgeCard.addView(cardTitle("判断接口（Jev）"))
-        judgeCard.addView(text("读对方消息、给意图判断和候选排序。必须配置。", 12f, sub))
+        judgeCard.addView(cardTitle("判断引擎"))
+        judgeCard.addView(text(
+            "推荐 OpenRouter Jev；TypeSafe 直连仅适合已有 Key；也可用 GLM-4.7 做结构化判断。",
+            12f, sub
+        ))
 
         val judgeBaseEdit = edit(prefs.judgeBaseUrl, Prefs.DEFAULT_JUDGE_BASE_OPENROUTER)
         val judgeModelEdit = edit(prefs.judgeModel, Prefs.DEFAULT_JUDGE_MODEL_OPENROUTER)
         judgeProviderIdx = when (prefs.judgeProvider) {
             Prefs.PROVIDER_TYPESAFE -> 1
-            Prefs.PROVIDER_CUSTOM -> 2
+            Prefs.PROVIDER_GLM47 -> 2
+            Prefs.PROVIDER_CUSTOM -> 3
             else -> 0
         }
         judgeCard.addView(pills(
-            listOf("OpenRouter", "TypeSafe 直连", "自定义"), judgeProviderIdx) { idx ->
+            listOf("OpenRouter（推荐）", "TypeSafe（已有 Key）", "GLM-4.7", "自定义 Jev"), judgeProviderIdx) { idx ->
             judgeProviderIdx = idx
             when (idx) {
                 0 -> {
@@ -98,16 +102,29 @@ class SettingsActivity : AppCompatActivity() {
                     judgeBaseEdit.setText(Prefs.DEFAULT_JUDGE_BASE_TYPESAFE)
                     judgeModelEdit.setText(Prefs.DEFAULT_JUDGE_MODEL_TYPESAFE)
                 }
-                // Custom POSTs the box verbatim, so a preset HOST left in the box
-                // would hit the API root. Expand it into the full endpoint the
-                // preset would have used; anything hand-typed is left alone.
-                2 -> judgeBaseEdit.setText(expandJudgeUrl(judgeBaseEdit.text.toString()))
+                2 -> {
+                    judgeBaseEdit.setText(Prefs.DEFAULT_JUDGE_BASE_GLM47)
+                    judgeModelEdit.setText(Prefs.DEFAULT_JUDGE_MODEL_GLM47)
+                }
+                // Legacy custom mode speaks the Jev Decisions wire format.
+                // Do not silently reinterpret a GLM chat-completions preset as Jev.
+                3 -> {
+                    val current = judgeBaseEdit.text.toString().trim().trimEnd('/')
+                    if (current == Prefs.DEFAULT_JUDGE_BASE_GLM47) {
+                        judgeBaseEdit.setText("")
+                        judgeModelEdit.setText("")
+                    } else {
+                        judgeBaseEdit.setText(expandJudgeUrl(judgeBaseEdit.text.toString()))
+                    }
+                }
             }
         })
         judgeCard.addView(label("Base URL"))
         judgeCard.addView(judgeBaseEdit)
-        judgeCard.addView(text("OpenRouter 拼 /alpha/decisions；TypeSafe 拼 /v1/systemone；自定义按原样 POST。",
-            11f, sub))
+        judgeCard.addView(text(
+            "OpenRouter Jev：/alpha/decisions；TypeSafe：/v1/systemone；GLM-4.7：/chat/completions；自定义 Jev 按完整 URL POST。",
+            11f, sub
+        ))
         judgeCard.addView(label("密钥"))
         judgeCard.addView(edit(prefs.judgeKey, "sk-...", password = true).also { judgeKeyEdit = it })
         judgeCard.addView(label("模型"))
@@ -140,7 +157,7 @@ class SettingsActivity : AppCompatActivity() {
                 val t0 = System.currentTimeMillis()
                 val demo = ChatSnapshot("连通测试", listOf(
                     Msg("other", "在吗？"), Msg("me", "在")))
-                val a = JudgeClient(probe).judge(demo, prefs.relationship)
+                val a = JevClient(probe).judge(demo, prefs.relationship)
                 val ms = System.currentTimeMillis() - t0
                 main.post {
                     judgeResult.text = if (a.error != null) "失败（${ms}ms）：${a.error}"
@@ -268,7 +285,7 @@ class SettingsActivity : AppCompatActivity() {
         // =================== 分析 ===================
         root.addView(section("分析"))
         val card2 = card()
-        card2.addView(label("关系描述（给 Jev 判断用）"))
+        card2.addView(label("关系描述（给判断引擎用）"))
         val relEdit = edit(prefs.relationship, Prefs.DEFAULT_REL)
         card2.addView(relEdit)
         card2.addView(label("会话白名单（每行一个关键词，空=所有会话）"))
@@ -401,7 +418,8 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun providerOf(idx: Int) = when (idx) {
         1 -> Prefs.PROVIDER_TYPESAFE
-        2 -> Prefs.PROVIDER_CUSTOM
+        2 -> Prefs.PROVIDER_GLM47
+        3 -> Prefs.PROVIDER_CUSTOM
         else -> Prefs.PROVIDER_OPENROUTER
     }
 
@@ -415,6 +433,7 @@ class SettingsActivity : AppCompatActivity() {
         when (base.trim().trimEnd('/')) {
             Prefs.DEFAULT_JUDGE_BASE_OPENROUTER -> Prefs.PROVIDER_OPENROUTER
             Prefs.DEFAULT_JUDGE_BASE_TYPESAFE -> Prefs.PROVIDER_TYPESAFE
+            Prefs.DEFAULT_JUDGE_BASE_GLM47 -> Prefs.PROVIDER_GLM47
             else -> providerOf(idx)
         }
 
@@ -425,13 +444,17 @@ class SettingsActivity : AppCompatActivity() {
         else -> base.trim()
     }
 
-    private fun defaultJudgeBase(provider: String): String =
-        if (provider == Prefs.PROVIDER_TYPESAFE) Prefs.DEFAULT_JUDGE_BASE_TYPESAFE
-        else Prefs.DEFAULT_JUDGE_BASE_OPENROUTER
+    private fun defaultJudgeBase(provider: String): String = when (provider) {
+        Prefs.PROVIDER_TYPESAFE -> Prefs.DEFAULT_JUDGE_BASE_TYPESAFE
+        Prefs.PROVIDER_GLM47 -> Prefs.DEFAULT_JUDGE_BASE_GLM47
+        else -> Prefs.DEFAULT_JUDGE_BASE_OPENROUTER
+    }
 
-    private fun defaultJudgeModel(provider: String): String =
-        if (provider == Prefs.PROVIDER_TYPESAFE) Prefs.DEFAULT_JUDGE_MODEL_TYPESAFE
-        else Prefs.DEFAULT_JUDGE_MODEL_OPENROUTER
+    private fun defaultJudgeModel(provider: String): String = when (provider) {
+        Prefs.PROVIDER_TYPESAFE -> Prefs.DEFAULT_JUDGE_MODEL_TYPESAFE
+        Prefs.PROVIDER_GLM47 -> Prefs.DEFAULT_JUDGE_MODEL_GLM47
+        else -> Prefs.DEFAULT_JUDGE_MODEL_OPENROUTER
+    }
 
     /**
      * A throwaway [Prefs] view carrying exactly what is in the boxes right now,

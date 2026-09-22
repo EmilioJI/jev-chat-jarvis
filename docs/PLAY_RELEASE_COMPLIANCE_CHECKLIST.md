@@ -6,29 +6,36 @@ This checklist reflects the current fork behavior on 2026-09-22. Re-run the
 review if AccessibilityService, model routing, OCR, history, storage, analytics,
 ads, or third-party SDK behavior changes.
 
-## 1. AccessibilityService classification
+## 1. AccessibilityService classification — DEVICE A/B COMPLETED
 
 Product purpose: conversation analysis / reply assistance.
 
-This is NOT primarily a disability-access tool. Therefore the intended Play
-configuration is:
+This is NOT primarily a disability-access tool. Google Play therefore does not
+permit this product to claim `isAccessibilityTool=true` merely to obtain access
+to sensitive UI data.
 
-- `android:isAccessibilityTool="false"`
-- AccessibilityService declaration completed in Play Console
-- prominent disclosure + affirmative consent shown before the system
-  accessibility-settings flow
-- disclosure video supplied to Play review
+Real-device A/B on vivo X100 Ultra / Android 16:
 
-Do not ship `isAccessibilityTool=true` to Play unless the product's actual
-primary purpose changes to disability support and the declaration can be
-truthfully substantiated.
+- `isAccessibilityTool=true`: WeChat tree capture PASS
+- `isAccessibilityTool=false`: service remained Enabled + Bound, but WeChat and
+  X stopped producing usable capture diagnostics
+- a normal non-sensitive third-party test app still produced diagnostics, so
+  the false build itself was not dead
 
-Current code status:
+This result is consistent with Android API 34+ `accessibilityDataSensitive`
+behavior, where sensitive events / nodes can be restricted to accessibility
+tools.
 
-- normal acceptance build still uses `true` only for compatibility A/B
-- PR #16 is the final `false` A/B candidate
-- do not change the normal integration metadata until Gate 3 in
-  `DEVICE_ACCEPTANCE_PROTOCOL_20260922.md` has a real-device result
+Release implication:
+
+- the current compatibility build may keep `true` for sideload/internal use
+- it is **NOT Play-release compliant** for this product category
+- the false experiment is closed / DO NOT MERGE because it breaks a core feature
+- a Google Play candidate needs a capture architecture that does not depend on
+  claiming accessibility-tool status for sensitive chat data
+
+Do not make PR #1 Play-ready until a Play-safe capture path is implemented and
+validated.
 
 ## 2. Prominent disclosure — implemented, device verification pending
 

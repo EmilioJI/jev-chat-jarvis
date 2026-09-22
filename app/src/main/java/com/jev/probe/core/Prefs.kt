@@ -28,6 +28,7 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
     init {
         if (prefsName == PREFS_MAIN) {
             migrateIfNeeded()
+            applySafetyDefaultsIfNeeded()
             // Proactively migrate any v1.3 plaintext route keys.
             val migratedJudge = judgeKey
             replyKey
@@ -54,6 +55,22 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
             Log.i(TAG, "prefs migrated judgeKey.len=${current.length} (no legacy key to copy)")
         }
         e.apply()
+    }
+
+    /**
+     * Security-architecture migration: background auto-analysis and automatic OCR
+     * are opt-in from this version onward. This runs once for existing installs
+     * as well, so an older preference cannot silently keep passive capture alive.
+     */
+    private fun applySafetyDefaultsIfNeeded() {
+        if (sp.getBoolean(K_SAFETY_MIGRATED, false)) return
+        sp.edit()
+            .putBoolean(K_SAFETY_MIGRATED, true)
+            .putBoolean(K_AUTO, false)
+            .putBoolean(K_OCR_FALLBACK, false)
+            .putBoolean(K_OCR_AUTO, false)
+            .apply()
+        Log.i(TAG, "prefs migrated to active-mode safety defaults")
     }
 
     // ---------------------------------------------------------------- judge
@@ -156,7 +173,7 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
 
     /** Fall back to OCR when an adapted app's node tree comes back empty. */
     var ocrFallback: Boolean
-        get() = sp.getBoolean(K_OCR_FALLBACK, true)
+        get() = sp.getBoolean(K_OCR_FALLBACK, false)
         set(v) = sp.edit().putBoolean(K_OCR_FALLBACK, v).apply()
 
     /** Auto-analyze in OCR mode (default off: OCR costs a screenshot each time). */
@@ -211,7 +228,7 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
 
     /** Auto-analyze on every incoming message; if false, user taps to analyze. */
     var autoAnalyze: Boolean
-        get() = sp.getBoolean(K_AUTO, true)
+        get() = sp.getBoolean(K_AUTO, false)
         set(v) = sp.edit().putBoolean(K_AUTO, v).apply()
 
     // ------------------------------------------------------------- helpers
@@ -296,6 +313,7 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
 
         private const val K_LEGACY_KEY = "openrouter_key"
         private const val K_MIGRATED_V13 = "prefs_migrated_v13"
+        private const val K_SAFETY_MIGRATED = "prefs_safety_active_mode_v1"
         private const val K_JUDGE_PROVIDER = "judge_provider"
         private const val K_JUDGE_BASE = "judge_base_url"
         private const val K_JUDGE_KEY = "judge_key"

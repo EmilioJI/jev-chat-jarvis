@@ -20,9 +20,11 @@ import com.jev.probe.core.Msg
  *                       adapter names below what proves "we are in a chat".
  * - messages non-empty→ normal capture.
  *
- * The disguised accessibility service (registered as SelectToSpeakService) lets
- * us read the node tree of apps that obfuscate it for normal services (WeChat).
- * Feishu/Lark does not obfuscate, so its adapter reads plain resource-ids.
+ * Adapters are best-effort parsers over standard Android accessibility data.
+ * They must not rely on service-name impersonation, Hook frameworks or private
+ * protocols. WeChat is used only from an explicit user-triggered read path;
+ * if its standard node tree is unavailable, callers offer clipboard/local OCR
+ * alternatives instead of trying to bypass the app's restriction.
  */
 interface ChatAppAdapter {
     val pkg: String
@@ -127,15 +129,13 @@ internal fun findWeChatTitle(
     return bestCounted ?: bestPlain
 }
 
-/** WeChat (com.tencent.mm). Message bubbles carry a stable id; sender side is
- *  the bubble's horizontal position (right = me, left = other).
+/** WeChat (com.tencent.mm), compatibility parser for an explicit user tap.
  *
- *  "In a chat window" = a `id/bkl` bubble container exists (even with its text
- *  stripped by the obfuscation) — nothing else counts, so a list screen's
- *  editable search box can no longer pass for a chat window (v1.3 fix: it was
- *  triggering OCR fallback on the conversation list). WeChat 8.0.52+ hides
- *  node text from ordinary services, so an empty read here (a `bkl` with no
- *  text) is exactly the case OCR fallback exists for. */
+ * It currently recognizes the visible bubble container id and infers sender
+ * side from geometry. This is intentionally best-effort and update-fragile:
+ * formal mode never scans it in the background, never treats the id as a stable
+ * contract, and never attempts to circumvent a restricted/empty node tree.
+ * When unavailable, the user may choose clipboard input or local OCR instead. */
 class WeChatAdapter : ChatAppAdapter {
     override val pkg = "com.tencent.mm"
 

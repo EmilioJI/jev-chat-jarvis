@@ -290,8 +290,8 @@ class SettingsActivity : AppCompatActivity() {
         val visionResult = resultText()
         visionCard.addView(cardBtn("测试视觉") {
             val visionBase = visionBaseEdit.text.toString().trim()
-            val visionModel = visionModelEdit.text.toString().trim().ifBlank { Prefs.DEFAULT_VISION_MODEL }
-            if (!VisionClient.supportsVision(visionBase.ifBlank { Prefs.DEFAULT_VISION_BASE }, visionModel)) {
+            val visionModelNow = visionModelEdit.text.toString().trim().ifBlank { Prefs.DEFAULT_VISION_MODEL }
+            if (!VisionClient.supportsVision(visionBase.ifBlank { Prefs.DEFAULT_VISION_BASE }, visionModelNow)) {
                 visionResult.text = GUARD_NO_VISION
                 return@cardBtn
             }
@@ -305,7 +305,7 @@ class SettingsActivity : AppCompatActivity() {
                 replyKey = replyKeyEdit.text.toString().trim()
                 visionBaseUrl = visionBase
                 visionKey = visionKeyEdit.text.toString().trim()
-                visionModel = visionModel
+                visionModel = visionModelNow
             }
             if (probe.effectiveVisionKey().isBlank()) {
                 clearScratch(SCRATCH_VISION)

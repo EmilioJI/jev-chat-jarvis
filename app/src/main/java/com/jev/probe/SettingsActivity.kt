@@ -3,7 +3,6 @@ package com.jev.probe
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -492,7 +491,7 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun paintPill(v: TextView, on: Boolean) {
         v.setTextColor(if (on) Guofeng.CARD else sub)
-        v.setTypeface(v.typeface, if (on) Typeface.BOLD else Typeface.NORMAL)
+        v.typeface = Guofeng.sans(on)
         v.background = round(dp(9), if (on) accent else pillOff)
     }
 
@@ -506,7 +505,7 @@ class SettingsActivity : AppCompatActivity() {
         }
         val sw = TextView(this).apply {
             text = if (initial) "开" else "关"; textSize = 13f; gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
+            typeface = Guofeng.sans(true)
             setTextColor(if (initial) Guofeng.CARD else sub)
             background = round(dp(10), if (initial) accent else Guofeng.PAPER_DEEP)
             setPadding(dp(18), dp(6), dp(18), dp(6))
@@ -569,7 +568,7 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun primaryBtn(label: String, onClick: () -> Unit) = TextView(this).apply {
-        text = label; textSize = 15f; gravity = Gravity.CENTER; setTypeface(typeface, Typeface.BOLD)
+        text = label; textSize = 15f; gravity = Gravity.CENTER; typeface = Guofeng.serif(true)
         setTextColor(Guofeng.CARD); background = round(dp(12), accent)
         setPadding(dp(16), dp(13), dp(16), dp(13))
         layoutParams = LinearLayout.LayoutParams(
@@ -579,7 +578,7 @@ class SettingsActivity : AppCompatActivity() {
 
     /** Outlined button sized for inside a card. */
     private fun cardBtn(label: String, onClick: () -> Unit) = TextView(this).apply {
-        text = label; textSize = 14f; gravity = Gravity.CENTER; setTypeface(typeface, Typeface.BOLD)
+        text = label; textSize = 14f; gravity = Gravity.CENTER; typeface = Guofeng.sans(true)
         setTextColor(accent); background = round(dp(10), Guofeng.CARD, stroke = true)
         setPadding(dp(14), dp(10), dp(14), dp(10))
         layoutParams = LinearLayout.LayoutParams(

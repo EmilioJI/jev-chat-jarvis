@@ -180,8 +180,8 @@ class SettingsActivity : AppCompatActivity() {
         val replyCard = card()
         replyCard.addView(cardTitle("回复接口"))
         replyCard.addView(text(
-            "生成 3 条候选回复。可与判断引擎使用同一服务商；留空 Key 只在同 host 时继承。" +
-                "自定义公网地址必须 HTTPS。",
+            "生成 3 条候选回复。DeepSeek Flash 强制关闭 thinking；GLM-5.3-Flash 强制 reasoning_effort=low。" +
+                " 留空 Key 只在同 host 时继承；自定义公网地址必须 HTTPS。",
             12f, sub
         ))
 
@@ -195,7 +195,7 @@ class SettingsActivity : AppCompatActivity() {
             else -> 4
         }
         replyCard.addView(pills(
-            listOf("OpenRouter", "DeepSeek 官方", "GLM-4.7", "通义兼容", "自定义"), replyIdx) { idx ->
+            listOf("OpenRouter", "DeepSeek Flash", "GLM-5.3-Flash", "通义兼容", "自定义"), replyIdx) { idx ->
             when (idx) {
                 0 -> { replyBaseEdit.setText(Prefs.DEFAULT_REPLY_BASE); replyModelEdit.setText(Prefs.DEFAULT_REPLY_MODEL) }
                 1 -> { replyBaseEdit.setText(Prefs.DEEPSEEK_BASE); replyModelEdit.setText(Prefs.DEEPSEEK_MODEL) }

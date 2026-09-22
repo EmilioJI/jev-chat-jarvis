@@ -2,7 +2,6 @@ package com.jev.probe
 
 import android.graphics.Color
 import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.InputType
 import android.util.TypedValue
@@ -257,7 +256,7 @@ class KnowledgeActivity : AppCompatActivity() {
         val logN = store.logSize(c0.id)
         val clear = TextView(this).apply {
             text = "清空此人历史（$logN 条）"
-            textSize = 12.5f; setTextColor(red); setTypeface(typeface, Typeface.BOLD)
+            textSize = 12.5f; setTextColor(red); typeface = Guofeng.sans(true)
             setPadding(0, dp(10), 0, dp(2))
             setOnClickListener {
                 if (logN == 0) { toast("本来就没有历史"); return@setOnClickListener }

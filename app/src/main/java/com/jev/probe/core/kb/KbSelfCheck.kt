@@ -104,7 +104,59 @@ object KbSelfCheck {
             if (!background.contains("小蓝")) failures.add("background 里没有笔记正文")
             if (!background.contains("自检用的关系描述")) failures.add("background 里没有联系人关系")
 
-            // 6. history is off by default (opt-in only)
+            // 6. zero-overlap history must depend on explicit direction evidence.
+            store.clearLog(contactId)
+            val now = System.currentTimeMillis()
+            fun entry(side: String, text: String) =
+                LogEntry(side, text, now, "com.jev.probe")
+
+            val firstScreen = listOf(
+                entry("other", "方向自检 A"),
+                entry("me", "方向自检 B")
+            )
+            store.appendLog(
+                contactId,
+                firstScreen,
+                captureHint = HistoryCaptureHint.CONSERVATIVE
+            )
+
+            val zeroOverlap = listOf(
+                entry("other", "方向自检 C"),
+                entry("me", "方向自检 D")
+            )
+            store.appendLog(
+                contactId,
+                zeroOverlap,
+                captureHint = HistoryCaptureHint.CONSERVATIVE
+            )
+            if (store.logSize(contactId) != 2)
+                failures.add("保守零重叠错误追加：期望 2，实际 ${store.logSize(contactId)}")
+
+            store.appendLog(
+                contactId,
+                zeroOverlap,
+                captureHint = HistoryCaptureHint.NEWEST_SCREEN
+            )
+            if (store.logSize(contactId) != 4)
+                failures.add("最新零重叠未追加：期望 4，实际 ${store.logSize(contactId)}")
+
+            val oneLineOverlap = listOf(
+                entry("me", "方向自检 D"),
+                entry("other", "方向自检 E")
+            )
+            store.appendLog(
+                contactId,
+                oneLineOverlap,
+                captureHint = HistoryCaptureHint.NEWEST_SCREEN
+            )
+            val sequence = store.recentLog(contactId, 10).map { it.text }
+            val expected = listOf(
+                "方向自检 A", "方向自检 B", "方向自检 C", "方向自检 D", "方向自检 E"
+            )
+            if (sequence != expected)
+                failures.add("历史方向/重叠序列错误：$sequence")
+
+            // 7. history is off by default (opt-in only)
             prefs.contextEnabled = false
             if (ContextBuilder.build(context, snapshot, "com.jev.probe", prefs).history.isNotEmpty())
                 failures.add("contextEnabled=false 时仍注入了历史")
@@ -120,7 +172,7 @@ object KbSelfCheck {
         }
         val counts = store.counts()
         return if (failures.isEmpty())
-            "自检通过：联系人匹配 / 笔记命中 / 历史去重 / 预算注入都正常。" +
+            "自检通过：联系人匹配 / 笔记命中 / 历史去重与方向 / 预算注入都正常。" +
                 "当前知识库 ${counts.notes} 条笔记、${counts.contacts} 个联系人、${counts.logLines} 条历史。"
         else "自检失败（${failures.size}）：" + failures.joinToString("；")
     }

@@ -9,10 +9,11 @@
 - package: `com.jev.probe.guofeng`
 - label: `Jev聊天助手·国风验收`
 - `isAccessibilityTool=true`
-- source commit: `f2537f6b61ff69c6341a8c7e31d04fa03c416f45`
-- Run #27: `35719705538`
+- source commit: `21cbf0108382c9919319535e5a3416c587818548`
+- Run #33: `35722055820`
+- JVM unit tests: `testDebugUnitTest` PASS
 - APK SHA-256:
-  `42bf16691c25240e2cf1b5ca9270d1dc773c316f3515dd93b07b097805c6fa54`
+  `82d130d950182804cb7c2455f7c9c8adc3170f9efabe962ca593a41efc73244d`
 
 ### B — Play 合规 A/B 实验候选 v3
 
@@ -24,8 +25,11 @@
 - APK SHA-256:
   `4b04615fa0f73d8ca55b21233df55e4f36d52e61f516ee704d2e4b716520aa62`
 
-B v3 与 A 使用同一最新 transport-hardened 核心代码基线；除 `isAccessibilityTool`
-以及为并行安装而使用的 package / launcher label 外，不引入其它业务行为差异。
+B v3 与 A 使用同一 transport-hardened 运行逻辑基线；A 在 B 构建后仅增加 JVM
+测试源码、JUnit test-only 依赖以及将 endpoint validator 从 private 调整为 internal 供同
+module 测试调用，不改变 Accessibility / capture / model / OCR 运行行为。除
+`isAccessibilityTool` 以及为并行安装而使用的 package / launcher label 外，没有与本次
+微信 A/B 判定相关的业务行为差异。
 
 A 与 B 可与官方 `com.jev.probe` 并行安装。
 

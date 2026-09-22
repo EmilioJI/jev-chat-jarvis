@@ -75,8 +75,15 @@ data class ChatContext(
             if (rel.isNotEmpty()) sb.append("关系：").append(rel).append('\n')
             if (c.notes.isNotBlank()) sb.append("关于").append(c.name).append("：")
                 .append(c.notes.trim()).append('\n')
-            if (c.autoSummary.isNotBlank()) sb.append("过往摘要：")
-                .append(c.autoSummary.trim()).append('\n')
+            if (c.autoSummary.isNotBlank()) {
+                sb.append("过往摘要")
+                if (c.autoSummaryThroughTs > 0L) {
+                    sb.append("（覆盖至记录时间 ")
+                        .append(HistoryTime.absolute(c.autoSummaryThroughTs))
+                        .append("）")
+                }
+                sb.append("：").append(c.autoSummary.trim()).append('\n')
+            }
         }
         notes.forEach { n ->
             sb.append(n.title.trim()).append(": ").append(n.content.trim()).append('\n')

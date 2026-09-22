@@ -86,7 +86,8 @@ object ContactSummaryManager {
             fresh.copy(
                 autoSummary = summary,
                 autoSummaryThroughTs = newestTs.coerceAtLeast(1L)
-            )
+            ),
+            touchUpdatedAt = false
         )
     }
 }

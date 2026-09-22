@@ -6,4 +6,5 @@
     android:canTakeScreenshot="true"
     android:notificationTimeout="100"
     android:isAccessibilityTool="true"
+    android:intro="@string/a11y_intro_disguised"
     android:description="@string/a11y_desc_disguised" />

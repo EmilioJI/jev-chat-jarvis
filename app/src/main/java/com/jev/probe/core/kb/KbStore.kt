@@ -258,10 +258,10 @@ class KbStore private constructor(context: Context) {
         val i = contacts.indexOfFirst { it.id == contactId }
         if (i >= 0) {
             val existing = contacts[i]
-            if (existing.autoSummary.isNotBlank() || existing.autoSummaryLogSize != 0) {
+            if (existing.autoSummary.isNotBlank() || existing.autoSummaryThroughTs != 0L) {
                 contacts[i] = existing.copy(
                     autoSummary = "",
-                    autoSummaryLogSize = 0,
+                    autoSummaryThroughTs = 0L,
                     updatedAt = System.currentTimeMillis()
                 )
                 if (!writeAtomic(contactsFile, contactsJson(contacts))) contactsCache = null
@@ -358,7 +358,7 @@ class KbStore private constructor(context: Context) {
                     relationship = o.optString("relationship"),
                     notes = o.optString("notes"),
                     autoSummary = o.optString("autoSummary"),
-                    autoSummaryLogSize = o.optInt("autoSummaryLogSize", 0).coerceAtLeast(0),
+                    autoSummaryThroughTs = o.optLong("autoSummaryThroughTs", 0L).coerceAtLeast(0L),
                     updatedAt = o.optLong("updatedAt", 0L)
                 ))
             }
@@ -412,7 +412,7 @@ class KbStore private constructor(context: Context) {
                 .put("relationship", c.relationship)
                 .put("notes", c.notes)
                 .put("autoSummary", c.autoSummary)
-                .put("autoSummaryLogSize", c.autoSummaryLogSize)
+                .put("autoSummaryThroughTs", c.autoSummaryThroughTs)
                 .put("updatedAt", c.updatedAt))
         }
         return arr.toString()

@@ -32,9 +32,23 @@ data class ChatSnapshot(
 ) {
     val latestFrom: String? get() = messages.lastOrNull()?.side
 
-    /** A stable signature of the last few messages, to detect real changes. */
-    fun signature(): String =
-        messages.takeLast(6).joinToString("|") { "${it.side}:${it.text}" }
+    /**
+     * Stable identity for what is currently open.
+     *
+     * The title is part of the identity on purpose: two different conversations
+     * can have identical last messages. Treating message text alone as the
+     * signature could keep another chat's analysis/fill callback alive.
+     */
+    fun signature(): String = buildString {
+        append(title.orEmpty())
+        append('\u0001')
+        messages.takeLast(6).forEach {
+            append(it.side)
+            append('\u0000')
+            append(it.text)
+            append('\u0002')
+        }
+    }
 }
 
 /** Jev's judgment result for one snapshot, plus the ranked candidate replies. */

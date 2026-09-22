@@ -5,10 +5,10 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 
 /**
- * targetSdk 35 makes Android 15+ draw every window edge-to-edge, so a plain
- * code-built screen starts underneath the status bar and ends underneath the
- * navigation bar. Pad [this] by the system-bar insets *on top of* the padding it
- * already carries.
+ * targetSdk 36 keeps Android 15+ edge-to-edge and Android 16 removes the
+ * target-36 opt-out entirely. A plain code-built screen therefore starts under
+ * the status/navigation bars. Pad [this] by the system-bar insets *on top of*
+ * the padding it already carries.
  *
  * The base padding is captured before the listener is installed and every pass
  * recomputes from that baseline, so repeated inset dispatches (rotation, IME,

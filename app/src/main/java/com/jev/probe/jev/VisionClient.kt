@@ -9,8 +9,9 @@ import org.json.JSONObject
 
 /**
  * The vision route: an OpenAI-compatible `/chat/completions` endpoint that
- * accepts `image_url` content parts. A-stage shell only — B stage wires it to
- * the screenshot pipeline (see docs/v1.3-plan.md "OCR 分层").
+ * accepts `image_url` content parts. When the user explicitly selects the
+ * remote Vision OCR engine, the live screenshot pipeline sends only a cropped
+ * chat-content region through this client. Local ML Kit remains the default.
  *
  * Reads visionBaseUrl / visionKey / visionModel from [Prefs]. The base URL does
  * not inherit from the reply route (a DeepSeek-style host has no vision
@@ -26,20 +27,23 @@ import org.json.JSONObject
 class VisionClient(private val prefs: Prefs) {
 
     /**
-     * Send a screenshot and get the transcribed dialog back as plain text.
-     * B stage will parse this into bubbles; A stage only proves the route works.
+     * Send a cropped chat screenshot and get the transcribed dialog back as
+     * labelled plain text. The caller parses only explicit 我/对方 lines.
      *
      * @param imageBase64Jpeg base64 of a JPEG, without the `data:` prefix.
      */
     fun extractDialog(imageBase64Jpeg: String): String = ask(
         imageBase64Jpeg,
-        "你是聊天截图转写助手。把图中聊天气泡按从上到下的顺序转写成文本，" +
-            "每行一条，格式 `我：正文` 或 `对方：正文`。只输出转写结果，不要解释。"
+        "你是聊天截图转写助手。只转写图中真实可见的聊天气泡，不要转写标题栏、状态栏、输入框、按钮或通知。" +
+            "按从上到下顺序，每个气泡一行；必须严格写成 `我：正文` 或 `对方：正文`。" +
+            "无法确定说话人时不要猜，直接省略该气泡。不要概括、补全、改写或解释，只输出转写结果。"
     )
 
     /** Generic single-question call against the image (used by the settings test). */
     fun ask(imageBase64Jpeg: String, prompt: String): String {
         val url = prefs.visionEndpoint()
+        val key = prefs.effectiveVisionKey()
+        if (key.isBlank()) throw ApiException(Route.VISION, null, "视觉接口未配置密钥")
         // Image first, then text: DashScope compatible-mode requires this order.
         val content = JSONArray()
             .put(JSONObject()
@@ -52,7 +56,7 @@ class VisionClient(private val prefs: Prefs) {
             .put("model", prefs.visionModel)
             .put("messages", messages)
             .put("temperature", 0.0)
-        val resp = HttpJson.post(url, prefs.effectiveVisionKey(), body, Route.VISION, HttpJson.headersFor(url))
+        val resp = HttpJson.post(url, key, body, Route.VISION, HttpJson.headersFor(url))
         return resp.optJSONArray("choices")?.optJSONObject(0)
             ?.optJSONObject("message")?.optString("content") ?: ""
     }

@@ -713,7 +713,8 @@ open class ChatCaptureService : AccessibilityService() {
                     val visionReady = visionSelected &&
                         prefs.effectiveVisionKey().isNotBlank() &&
                         VisionClient.supportsVision(
-                            prefs.visionBaseUrl.ifBlank { Prefs.DEFAULT_VISION_BASE }
+                            prefs.visionBaseUrl.ifBlank { Prefs.DEFAULT_VISION_BASE },
+                            prefs.visionModel
                         )
 
                     if (visionReady) {

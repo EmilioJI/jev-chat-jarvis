@@ -19,6 +19,7 @@ import com.jev.probe.core.DiagnosticsStore
 import com.jev.probe.core.Msg
 import com.jev.probe.core.Prefs
 import com.jev.probe.core.RankedReply
+import com.jev.probe.core.kb.ChatContext
 import com.jev.probe.core.kb.ContextBuilder
 import com.jev.probe.core.kb.HistoryCaptureHint
 import com.jev.probe.core.kb.KbStore
@@ -309,7 +310,7 @@ open class ChatCaptureService : AccessibilityService() {
         pendingSnapshot = snapshot
         pendingHistoryHint = HistoryCaptureHint.NEWEST_SCREEN
         main.removeCallbacks(debounce)
-        main.postDelayed(debounce, 800) // debounce bursts of content-changed events
+        main.postDelayed(debounce, 350) // short debounce: dedupe already absorbs event bursts
     }
 
     /** A placeholder title an app shows only for a moment (e.g. X's "连接中…"
@@ -398,6 +399,32 @@ open class ChatCaptureService : AccessibilityService() {
         return sessionStillCurrent(session)
     }
 
+    /**
+     * Resolve identity and relationship for this exact conversation.
+     *
+     * The visible conversation title supplies identity (e.g. WeChat remark or
+     * nickname). Relationship semantics are never guessed from that name:
+     * per-contact configuration wins, then the optional global fallback, else
+     * the model is told explicitly that the relationship is unknown.
+     */
+    private fun effectiveRelationship(snapshot: ChatSnapshot, ctx: ChatContext?): String {
+        val display = ctx?.contact?.name?.trim().orEmpty()
+            .ifBlank { KbStore.displayName(snapshot.title) }
+        val relation = ctx?.contact?.relationship?.trim().orEmpty()
+            .ifBlank { prefs.relationship.trim() }
+
+        return buildString {
+            if (display.isNotBlank()) {
+                append("当前会话名称/备注：").append(display).append('；')
+            }
+            if (relation.isNotBlank()) {
+                append("与我的关系：").append(relation)
+            } else {
+                append("与当前会话对象的关系未设置")
+            }
+        }
+    }
+
     private fun runAnalysis() {
         val snapshot = pendingSnapshot ?: return
         val historyHint = pendingHistoryHint
@@ -416,7 +443,6 @@ open class ChatCaptureService : AccessibilityService() {
         analyzing = true
         main.post { overlay?.showLoading(); overlay?.setNote(snapshot.note) }
         val client = JevClient(prefs)
-        val rel = prefs.relationship
 
         // Both network branches are concurrent, but publishing is coordinated on
         // the main thread: replies that beat the judgment are held instead of
@@ -425,12 +451,17 @@ open class ChatCaptureService : AccessibilityService() {
         var judgmentOk = false
         var pendingRanked: List<RankedReply>? = null
         var pendingReplyError: String? = null
+        var pendingRepliesFinal = false
 
         fun publishRepliesIfReady() {
             val ranked = pendingRanked ?: return
             if (!judgmentReady || !judgmentOk || !sessionStillCurrent(session)) return
-            analyzing = false
-            overlay?.showReplies(ranked, pendingReplyError) { text -> fillInput(text, session) }
+            if (pendingRepliesFinal) analyzing = false
+            overlay?.showReplies(
+                ranked,
+                pendingReplyError,
+                sorting = !pendingRepliesFinal
+            ) { text -> fillInput(text, session) }
         }
 
         // Knowledge context first (local file reads only, a few ms), then the two
@@ -444,6 +475,7 @@ open class ChatCaptureService : AccessibilityService() {
                 Log.w(TAG, "context build failed: ${e.javaClass.simpleName}"); null
             }
             if (!sessionStillCurrent(session)) return@contextTask
+            val rel = effectiveRelationship(snapshot, ctx)
             main.post contextPost@{
                 if (!sessionStillCurrent(session)) return@contextPost
                 overlay?.setContextInfo(ctx?.notes?.size ?: 0, ctx?.history?.size ?: 0)
@@ -467,28 +499,67 @@ open class ChatCaptureService : AccessibilityService() {
                 }
             }
 
-            // Candidate replies are slower (generative + rank). If they finish
-            // first, retain them until the judgment is on screen.
+            // Reply path is progressive: generate 3 usable candidates first and
+            // publish them immediately; Jev ranking then upgrades the same cards.
+            // This removes one whole network round trip from perceived latency
+            // without giving up the final judgment-engine ordering.
             submit replyTask@{
                 if (!sessionStillCurrent(session)) return@replyTask
+
                 var replyError: String? = null
-                val ranked = try { client.draftAndRank(snapshot, rel, ctx) } catch (e: Exception) {
+                val draftStarted = System.currentTimeMillis()
+                val candidates = try {
+                    client.draftCandidates(snapshot, rel, ctx)
+                } catch (e: Exception) {
                     replyError = e.message ?: e.javaClass.simpleName
                     emptyList()
                 }
-                main.post replyPost@{
-                    if (!sessionStillCurrent(session)) return@replyPost
+                Log.i(TAG, "latency reply_draft_ms=${System.currentTimeMillis() - draftStarted}")
+
+                if (candidates.isEmpty()) {
+                    main.post replyPost@{
+                        if (!sessionStillCurrent(session)) return@replyPost
+                        pendingReplyError = replyError ?: "未生成候选回复"
+                        pendingRanked = emptyList()
+                        pendingRepliesFinal = true
+                        if (judgmentReady && !judgmentOk) analyzing = false
+                        publishRepliesIfReady()
+                    }
+                    return@replyTask
+                }
+
+                val provisional = candidates.map { RankedReply(it, 0.0) }
+                main.post draftPost@{
+                    if (!sessionStillCurrent(session)) return@draftPost
+                    pendingReplyError = null
+                    pendingRanked = provisional
+                    pendingRepliesFinal = false
+                    publishRepliesIfReady()
+                }
+
+                val rankStarted = System.currentTimeMillis()
+                val ranked = try {
+                    client.rankCandidates(snapshot, rel, candidates, ctx)
+                } catch (e: Exception) {
+                    replyError = e.message ?: e.javaClass.simpleName
+                    emptyList()
+                }
+                Log.i(TAG, "latency reply_rank_ms=${System.currentTimeMillis() - rankStarted}")
+
+                main.post rankPost@{
+                    if (!sessionStillCurrent(session)) return@rankPost
                     pendingReplyError = replyError
-                    pendingRanked = ranked
+                    pendingRanked = if (ranked.isNotEmpty()) ranked else provisional
+                    pendingRepliesFinal = true
                     if (judgmentReady && !judgmentOk) analyzing = false
                     publishRepliesIfReady()
                 }
 
                 // Rolling contact summary is opt-in, low-frequency and off the
-                // critical UI path. Only a healthy reply route and a real newest
-                // incoming screen may trigger it; failure never affects analysis.
+                // critical UI path. A healthy draft is sufficient; ranking
+                // failure must not suppress maintenance work.
                 if (
-                    replyError == null && ranked.isNotEmpty() &&
+                    candidates.isNotEmpty() &&
                     historyHint == HistoryCaptureHint.NEWEST_SCREEN &&
                     sessionStillCurrent(session)
                 ) {

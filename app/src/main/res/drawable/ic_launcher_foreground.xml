@@ -1,27 +1,11 @@
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-
-    <!-- Dark-jade chat bubble, centered inside the adaptive-icon safe zone. -->
-    <path
-        android:fillColor="#184940"
-        android:pathData="M37,32 h31 a12,12 0,0 1,12 12 v16 a12,12 0,0 1,-12 12 h-14 l-14,11 v-11 h-3 a12,12 0,0 1,-12 -12 v-16 a12,12 0,0 1,12 -12 z" />
-
-    <!-- Warm-paper dialogue marks. -->
-    <path
-        android:fillColor="#F8F4E9"
-        android:pathData="M42,50 h22 a2.4,2.4 0,0 1,0 4.8 h-22 a2.4,2.4 0,0 1,0 -4.8 z" />
-    <path
-        android:fillColor="#F8F4E9"
-        android:pathData="M42,59 h15 a2.4,2.4 0,0 1,0 4.8 h-15 a2.4,2.4 0,0 1,0 -4.8 z" />
-
-    <!-- Cinnabar seal accent. -->
-    <path
-        android:fillColor="#A43730"
-        android:pathData="M68,66 h16 v16 h-16 z" />
-    <path
-        android:fillColor="#F8F4E9"
-        android:pathData="M72,70 h8 v2 h-8 z M72,74 h8 v2 h-8 z M72,78 h8 v1.8 h-8 z" />
-</vector>
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/zhiyan_launcher_base" />
+    <item
+        android:width="28dp"
+        android:height="28dp"
+        android:gravity="end|bottom"
+        android:right="13dp"
+        android:bottom="13dp"
+        android:drawable="@drawable/zhiyan_seal" />
+</layer-list>

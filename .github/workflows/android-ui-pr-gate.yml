@@ -41,6 +41,28 @@ jobs:
           test -f "$ANDROID_HOME/platforms/android-36/android.jar"
           test -x "$ANDROID_HOME/build-tools/35.0.0/aapt"
 
+      - name: WeChat safety architecture guard
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test ! -e app/src/main/java/com/google/android/accessibility/selecttospeak/SelectToSpeakService.kt
+          test ! -e app/src/main/res/xml/config_disguised.xml
+
+          grep -F 'android:name=".capture.ChatCaptureService"' app/src/main/AndroidManifest.xml
+          grep -F 'android:isAccessibilityTool="false"' app/src/main/res/xml/config_accessibility.xml
+
+          if grep -F 'com.tencent.mm' app/src/main/res/xml/config_accessibility.xml; then
+            echo "WeChat must not be subscribed through AccessibilityService packageNames" >&2
+            exit 1
+          fi
+
+          BANNED='SelectToSpeakService|com\.tencent\.mm:id/|ACTION_SET_TEXT|ACTION_PASTE|ACTION_CLICK|dispatchGesture|Xposed|LSPosed|Frida|Magisk'
+          if grep -R -n -E "$BANNED" app/src/main/java app/src/main/res/xml; then
+            echo "Banned WeChat-evasion/UI-automation mechanism found" >&2
+            exit 1
+          fi
+
       - name: Unit tests and debug APK
         shell: bash
         run: |

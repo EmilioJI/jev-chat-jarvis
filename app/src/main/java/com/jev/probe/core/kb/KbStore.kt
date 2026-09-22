@@ -250,6 +250,23 @@ class KbStore private constructor(context: Context) {
         lastScreenCache.remove(contactId)
         runCatching { logFile(contactId).delete() }
         runCatching { screenFile(contactId).delete() }
+
+        // The rolling summary is derived from this history. Clearing history
+        // must clear the derived memory too, otherwise "clear history" would
+        // leave model-compressed chat facts behind.
+        val contacts = loadContacts()
+        val i = contacts.indexOfFirst { it.id == contactId }
+        if (i >= 0) {
+            val existing = contacts[i]
+            if (existing.autoSummary.isNotBlank() || existing.autoSummaryLogSize != 0) {
+                contacts[i] = existing.copy(
+                    autoSummary = "",
+                    autoSummaryLogSize = 0,
+                    updatedAt = System.currentTimeMillis()
+                )
+                if (!writeAtomic(contactsFile, contactsJson(contacts))) contactsCache = null
+            }
+        }
         Unit
     }
 
@@ -341,6 +358,7 @@ class KbStore private constructor(context: Context) {
                     relationship = o.optString("relationship"),
                     notes = o.optString("notes"),
                     autoSummary = o.optString("autoSummary"),
+                    autoSummaryLogSize = o.optInt("autoSummaryLogSize", 0).coerceAtLeast(0),
                     updatedAt = o.optLong("updatedAt", 0L)
                 ))
             }
@@ -394,6 +412,7 @@ class KbStore private constructor(context: Context) {
                 .put("relationship", c.relationship)
                 .put("notes", c.notes)
                 .put("autoSummary", c.autoSummary)
+                .put("autoSummaryLogSize", c.autoSummaryLogSize)
                 .put("updatedAt", c.updatedAt))
         }
         return arr.toString()

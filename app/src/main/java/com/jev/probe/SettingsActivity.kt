@@ -22,6 +22,7 @@ import com.jev.probe.core.ChatSnapshot
 import com.jev.probe.core.Msg
 import com.jev.probe.core.Prefs
 import com.jev.probe.core.SecuritySelfCheck
+import com.jev.probe.capture.ocr.VisionDialogParser
 import com.jev.probe.core.kb.KbSelfCheck
 import com.jev.probe.core.kb.KbStore
 import com.jev.probe.jev.JevClient
@@ -253,8 +254,12 @@ class SettingsActivity : AppCompatActivity() {
 
         // --- 视觉接口 ---
         val visionCard = card()
-        visionCard.addView(cardTitle("视觉接口（OCR 用，可先不填）"))
-        visionCard.addView(text("读不到控件树的 App 走截图识别。B 阶段才用到，现在填不填都不影响。", 12f, sub))
+        visionCard.addView(cardTitle("视觉接口（远程 OCR，可选）"))
+        visionCard.addView(text(
+            "只有在下面把 OCR 引擎切到“视觉 API”时才参与实时识别；默认 ML Kit 完全本地。" +
+                "远程模式只上传裁剪后的聊天内容区域。",
+            12f, sub
+        ))
 
         val visionBaseEdit = edit(prefs.visionBaseUrl, Prefs.DEFAULT_VISION_BASE)
         val visionModelEdit = edit(prefs.visionModel, Prefs.DEFAULT_VISION_MODEL)
@@ -340,10 +345,27 @@ class SettingsActivity : AppCompatActivity() {
         val autoRow = toggleRow("对方发消息时自动分析", prefs.autoAnalyze)
         card2.addView(autoRow)
 
-        // --- OCR 兜底（B 阶段）---
+        // --- OCR 兜底 ---
+        var ocrEngineSelected = prefs.ocrEngine
+        card2.addView(label("OCR 引擎"))
+        card2.addView(pills(
+            listOf("本地 ML Kit（默认）", "视觉 API（上传裁剪聊天区）"),
+            if (ocrEngineSelected == Prefs.OCR_VISION) 1 else 0
+        ) { idx ->
+            ocrEngineSelected = if (idx == 1) Prefs.OCR_VISION else Prefs.OCR_MLKIT
+        })
+        card2.addView(text(
+            "本地 ML Kit 不上传截图；视觉 API 仅在控件树读不到正文时上传裁剪后的聊天区域。" +
+                "视觉调用失败或无法可靠识别说话人时会自动回退本地 OCR。",
+            11f, sub
+        ))
+
         val ocrFallbackRow = toggleRow("树读不到正文时用 OCR 兜底", prefs.ocrFallback)
         card2.addView(ocrFallbackRow)
-        card2.addView(text("飞书正文是画上去的、微信伪装失效时也读不到，这时截一次屏本地识别（不上传）。", 11f, sub))
+        card2.addView(text(
+            "飞书正文是画上去的、微信伪装失效时也可能读不到，这时才进入所选 OCR 引擎。",
+            11f, sub
+        ))
         val ocrAutoRow = toggleRow("OCR 模式自动分析", prefs.ocrAutoAnalyze)
         card2.addView(ocrAutoRow)
         card2.addView(text("关闭时 OCR 认完只亮悬浮球，点一下再分析。", 11f, sub))
@@ -383,7 +405,12 @@ class SettingsActivity : AppCompatActivity() {
                     val out = try {
                         val kb = KbSelfCheck.run(this@SettingsActivity)
                         val security = SecuritySelfCheck.run(this@SettingsActivity)
-                        kb + "\n" + security
+                        val visionParser = if (VisionDialogParser.selfCheck()) {
+                            "视觉 OCR 解析自检通过。"
+                        } else {
+                            "视觉 OCR 解析自检失败。"
+                        }
+                        kb + "\n" + security + "\n" + visionParser
                     } catch (e: Exception) {
                         "自检异常：${e.javaClass.simpleName} ${e.message ?: ""}"
                     }
@@ -448,13 +475,22 @@ class SettingsActivity : AppCompatActivity() {
             prefs.whitelist = wlEdit.text.toString().split("\n")
                 .map { it.trim() }.filter { it.isNotEmpty() }.toSet()
             prefs.autoAnalyze = (autoRow.tag as? Boolean) ?: true
+            prefs.ocrEngine = ocrEngineSelected
             prefs.ocrFallback = (ocrFallbackRow.tag as? Boolean) ?: true
             prefs.ocrAutoAnalyze = (ocrAutoRow.tag as? Boolean) ?: false
             prefs.contextEnabled = (ctxRow.tag as? Boolean) ?: false
             prefs.contextHistoryCount =
                 ctxCountEdit.text.toString().trim().toIntOrNull()?.coerceIn(0, 100) ?: 30
             prefs.overlayOpacity = seek.progress + 60
-            Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show()
+            val savedMessage = if (
+                prefs.ocrEngine == Prefs.OCR_VISION &&
+                prefs.effectiveVisionKey().isBlank()
+            ) {
+                "已保存；视觉 OCR 未配置可用密钥，将自动回退本地识别"
+            } else {
+                "已保存"
+            }
+            Toast.makeText(this, savedMessage, Toast.LENGTH_SHORT).show()
         })
 
         setContentView(scroll)

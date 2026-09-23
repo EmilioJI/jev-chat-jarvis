@@ -77,6 +77,8 @@ class OverlayController(private val ctx: Context) {
      *  can say so instead of silently showing "（未生成候选回复）". */
     private var replyError: String? = null
     private var replySorting: Boolean = false
+    /** One-tap action armed by a fresh notification. */
+    private var quickAction: (() -> Unit)? = null
 
     private fun dp(v: Int) = TypedValue.applyDimension(
         TypedValue.COMPLEX_UNIT_DIP, v.toFloat(), ctx.resources.displayMetrics).roundToInt()
@@ -255,10 +257,17 @@ class OverlayController(private val ctx: Context) {
                     else if (moved) {
                         prefs.bubbleX = params.x; prefs.bubbleY = params.y; true  // stays where dropped
                     } else {
-                        if (expanded) toggle()
-                        else {
-                            showSafeEntryMenu()
+                        if (expanded) {
                             toggle()
+                        } else {
+                            val quick = quickAction
+                            if (quick != null) {
+                                quickAction = null
+                                quick.invoke()
+                            } else {
+                                showSafeEntryMenu()
+                                toggle()
+                            }
                         }
                         true
                     }
@@ -322,6 +331,28 @@ class OverlayController(private val ctx: Context) {
     }
 
     // ------------------------------------------------------------ public API
+
+    /**
+     * Arm one-tap analysis for a fresh WeChat notification without exposing the
+     * message text on top of other apps. The bubble gets a jade dot; tapping it
+     * immediately runs [onAnalyze] instead of opening another menu first.
+     */
+    fun showNotificationReady(title: String?, onAnalyze: () -> Unit) {
+        ensureRoot()
+        quickAction = onAnalyze
+        bubble?.alpha = 1f
+        dangerDot?.background = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(Guofeng.JADE)
+        }
+        val views = ArrayList<View>()
+        views.add(line("微信新消息已就绪", "#184940", 13f, true))
+        title?.takeIf { it.isNotBlank() }?.let {
+            views.add(hint("会话：" + it.take(24)))
+        }
+        views.add(hint("点悬浮球即可分析；不读取微信内部控件"))
+        setContent(views)
+    }
 
     /**
      * Re-opening the bubble never implies that the previous analysis belongs to
@@ -405,6 +436,11 @@ class OverlayController(private val ctx: Context) {
      */
     fun resetForNewConversation() {
         lastJudgment = null
+        quickAction = null
+        dangerDot?.background = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(Color.TRANSPARENT)
+        }
         noteText = null
         replyError = null
         replySorting = false
@@ -434,6 +470,11 @@ class OverlayController(private val ctx: Context) {
 
     fun showLoading() {
         ensureRoot(); bubble?.alpha = 1f
+        quickAction = null
+        dangerDot?.background = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(Color.TRANSPARENT)
+        }
         ctxNotes = 0; ctxHistory = 0   // counts for the round that is starting
         replyError = null              // this round has not failed (yet)
         replySorting = false

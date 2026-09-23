@@ -76,7 +76,7 @@ internal object ManualWeChatVisibleText {
             .firstOrNull()
 
         val seen = HashSet<String>()
-        val body = source.asSequence()
+        val body: List<Item> = source.asSequence()
             .filter { it.top > topBand && it.bottom < bottomBand }
             .filter { it.text.length in 1..600 }
             .filterNot { isTimestampLike(it.text) || isChrome(it.text) }
@@ -86,8 +86,8 @@ internal object ManualWeChatVisibleText {
                 seen.add(it.text + "\u0000" + (it.top / 8))
             }
             .sortedBy { it.top }
-            .takeLast(20)
             .toList()
+            .takeLast(20)
 
         if (body.isEmpty()) return ChatSnapshot(
             title = title,

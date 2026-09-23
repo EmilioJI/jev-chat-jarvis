@@ -57,9 +57,9 @@ function Get-PrefValue {
     return $(if ($m.Success) { $m.Groups[1].Value } else { "" })
 }
 
-$deviceLine = (adb devices | Select-String ("^" + [regex]::Escape($Serial) + "s+device")).Line
-if (-not $deviceLine) {
-    throw "Device is not online: $Serial"
+$deviceState = ((adb -s $Serial get-state 2>$null) -join "").Trim()
+if ($LASTEXITCODE -ne 0 -or $deviceState -ne "device") {
+    throw "Device is not online: $Serial (state=$deviceState)"
 }
 
 $probePath = (Invoke-Adb shell pm path $ProbePackage | Select-Object -First 1)
@@ -68,7 +68,7 @@ if (-not $probePath) {
 }
 
 $focus = Get-FocusLine
-if ($focus -notmatch "com.tencent.mm") {
+if (-not $focus.Contains("com.tencent.mm")) {
     throw "Open the target WeChat chat first. Current focus: $focus"
 }
 
@@ -93,7 +93,7 @@ foreach ($profile in $Profiles) {
     Start-Sleep -Milliseconds $SettleMs
 
     $focus = Get-FocusLine
-    if ($focus -notmatch "com.tencent.mm") {
+    if (-not $focus.Contains("com.tencent.mm")) {
         throw "WeChat lost focus during profile $($profile.Name): $focus"
     }
 

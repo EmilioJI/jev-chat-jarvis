@@ -54,8 +54,22 @@ class OverlayController(private val ctx: Context) {
 
     var onManualAnalyze: (() -> Unit)? = null
 
-    /** Bubble menu → file the open conversation as a knowledge-base contact. */
-    var onSaveContact: (() -> Unit)? = null
+    /** Bubble menu → file the current source's conversation as a contact. */
+    private var onSaveContact: (() -> Unit)? = null
+    private var saveContactOwner: Any? = null
+
+    @Synchronized
+    fun setSaveContactHandler(owner: Any, handler: (() -> Unit)?) {
+        if (handler == null) {
+            if (saveContactOwner === owner) {
+                saveContactOwner = null
+                onSaveContact = null
+            }
+        } else {
+            saveContactOwner = owner
+            onSaveContact = handler
+        }
+    }
 
     /** Bubble menu → one manual screenshot + OCR of whatever app is open. */
     var onOcrCapture: (() -> Unit)? = null

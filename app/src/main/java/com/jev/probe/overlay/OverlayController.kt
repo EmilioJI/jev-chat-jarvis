@@ -52,7 +52,21 @@ class OverlayController(private val ctx: Context) {
     private var expanded = false
     private var lp: WindowManager.LayoutParams? = null
 
-    var onManualAnalyze: (() -> Unit)? = null
+    private var onManualAnalyze: (() -> Unit)? = null
+    private var manualAnalyzeOwner: Any? = null
+
+    @Synchronized
+    fun setManualAnalyzeHandler(owner: Any, handler: (() -> Unit)?) {
+        if (handler == null) {
+            if (manualAnalyzeOwner === owner) {
+                manualAnalyzeOwner = null
+                onManualAnalyze = null
+            }
+        } else {
+            manualAnalyzeOwner = owner
+            onManualAnalyze = handler
+        }
+    }
 
     /** Bubble menu → file the current source's conversation as a contact. */
     private var onSaveContact: (() -> Unit)? = null

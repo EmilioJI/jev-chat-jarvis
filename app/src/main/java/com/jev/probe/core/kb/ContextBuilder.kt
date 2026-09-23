@@ -84,7 +84,7 @@ object ContextBuilder {
         val now = System.currentTimeMillis()
         store.appendLog(
             contact.id,
-            snapshot.messages.map { LogEntry(it.side, it.text, now, app) },
+            snapshot.messages.map { LogEntry(it.side, it.text, it.ts?.takeIf { t -> t > 0L } ?: now, app) },
             captureHint = historyHint
         )
         val n = prefs.contextHistoryCount.coerceIn(0, 100)

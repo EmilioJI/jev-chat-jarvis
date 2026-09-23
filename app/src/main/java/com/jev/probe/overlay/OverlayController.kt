@@ -14,6 +14,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -25,6 +26,7 @@ import com.jev.probe.core.Analysis
 import com.jev.probe.core.ChatSnapshot
 import com.jev.probe.core.Prefs
 import com.jev.probe.core.RankedReply
+import com.jev.probe.ime.ReplyHandoff
 import com.jev.probe.ui.Guofeng
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -436,6 +438,7 @@ class OverlayController(private val ctx: Context) {
      */
     fun resetForNewConversation() {
         lastJudgment = null
+        ReplyHandoff.clear()
         quickAction = null
         dangerDot?.background = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
@@ -519,6 +522,7 @@ class OverlayController(private val ctx: Context) {
     ) {
         replyError = error
         replySorting = sorting
+        if (ranked.isNotEmpty()) ReplyHandoff.publish(ranked)
         val a = lastJudgment?.copy(rankedReplies = ranked) ?: return
         lastJudgment = a
         render(a, generating = false)
@@ -659,8 +663,19 @@ class OverlayController(private val ctx: Context) {
         })
         val btns = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
         btns.addView(pill("复制并收起", true) { copy(text); if (expanded) toggle() })
+        btns.addView(pill("快捷填入", false) { armIme(text) })
         c.addView(btns)
         return c
+    }
+
+    private fun armIme(text: String) {
+        ReplyHandoff.arm(text)
+        val imm = ctx.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        runCatching { imm.showInputMethodPicker() }
+            .onFailure {
+                toast("无法打开输入法选择器，请先在系统设置启用“小书童·快捷填入”")
+            }
+        if (expanded) toggle()
     }
 
     private fun pill(label: String, primary: Boolean, onClick: () -> Unit) = TextView(ctx).apply {

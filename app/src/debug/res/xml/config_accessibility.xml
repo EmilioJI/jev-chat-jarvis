@@ -2,18 +2,25 @@
 <!--
   Internal/debug acceptance only.
 
-  Release/main stays isAccessibilityTool=false. This debug override exists only
-  to test user-triggered standard-node reads on Android 16 devices where apps
-  mark visible chat content accessibilityDataSensitive.
+  Release/main stays isAccessibilityTool=false and excludes WeChat entirely.
 
-  WeChat is intentionally NOT added to packageNames, so this build still does
-  not subscribe to WeChat Accessibility events. The app must not use WeChat
-  resource ids, automatic node capture, UI automation, SET_TEXT/PASTE/CLICK, or
-  automatic sending.
+  This debug profile answers one narrow device question on Android 16/vivo:
+  does a user-triggered standard-node read require WeChat to be present in the
+  service package filter as well as isAccessibilityTool=true?
+
+  Even in this build:
+  - production adapters still exclude WeChat, so WeChat events are not parsed
+    or auto-analyzed;
+  - no WeChat resource ids are used;
+  - no ACTION_SET_TEXT / ACTION_PASTE / ACTION_CLICK / gesture automation is
+    allowed;
+  - candidates are never auto-sent.
+
+  Do not ship this debug profile as the public/release accessibility config.
 -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeViewScrolled"
-    android:packageNames="com.tencent.mobileqq,com.ss.android.lark,com.twitter.android"
+    android:packageNames="com.tencent.mm,com.tencent.mobileqq,com.ss.android.lark,com.twitter.android"
     android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows"
     android:canRetrieveWindowContent="true"
     android:canTakeScreenshot="true"

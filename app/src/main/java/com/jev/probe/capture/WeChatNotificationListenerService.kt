@@ -21,7 +21,21 @@ class WeChatNotificationListenerService : NotificationListenerService() {
     override fun onListenerConnected() {
         super.onListenerConnected()
         prefs = Prefs(this)
-        if (prefs.enabled) KeepAliveService.start(this)
+        if (!prefs.enabled) return
+
+        KeepAliveService.start(this)
+
+        // Rehydrate from notifications Android still considers active. This
+        // preserves one-tap WeChat context after this listener or the app process
+        // is restarted, without querying WeChat itself or persisting notification
+        // text behind the user's back. The normal de-duplication path is reused.
+        runCatching {
+            activeNotifications
+                ?.asSequence()
+                ?.filter { it.packageName == WECHAT_PKG }
+                ?.sortedBy { it.postTime }
+                ?.forEach { onNotificationPosted(it) }
+        }
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {

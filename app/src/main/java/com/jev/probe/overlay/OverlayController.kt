@@ -392,8 +392,9 @@ class OverlayController(private val ctx: Context) {
 
     /**
      * Re-opening the bubble never implies that the previous analysis belongs to
-     * the app/conversation now on screen. This matters especially for WeChat,
-     * which formal mode intentionally does not subscribe to via Accessibility.
+     * the app/conversation now on screen. The generic safe-entry menu therefore
+     * exposes only explicit clipboard/OCR inputs; adapted apps render their own
+     * current-chat analysis control after a chat window is positively identified.
      */
     private fun showSafeEntryMenu() {
         ensureRoot()
@@ -402,9 +403,6 @@ class OverlayController(private val ctx: Context) {
         views.add(line("主动分析", "#5C6560", 12f, true))
         onAnalyzeClipboard?.let { action ->
             views.add(bigButton("分析剪贴板") { action.invoke() })
-        }
-        onManualAnalyze?.let { action ->
-            views.add(secondaryButton("分析当前可读页面") { action.invoke() })
         }
         onOcrCapture?.let { action ->
             views.add(secondaryButton("本地截屏识别（可选，无需图像 Key）") { action.invoke() })

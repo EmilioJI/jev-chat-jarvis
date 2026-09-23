@@ -7,6 +7,7 @@ import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.InputMethodManager
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -71,6 +72,7 @@ class MainActivity : AppCompatActivity() {
         val a11y = isA11yEnabled()
         val overlay = Settings.canDrawOverlays(this)
         val notifications = isNotificationAccessEnabled()
+        val ime = isZhiyanImeEnabled()
         val key = prefs.hasKey()
         val ready = overlay && key
 
@@ -103,6 +105,14 @@ class MainActivity : AppCompatActivity() {
             granted = a11y
         ) {
             showAccessibilityDisclosure()
+        })
+        container.addView(permissionCard(
+            mark = "入",
+            title = "小书童·快捷填入（可选）",
+            desc = "点候选后通过 Android 标准输入法接口写入，随后切回原键盘",
+            granted = ime
+        ) {
+            showImeDisclosure()
         })
         container.addView(permissionCard(
             mark = "稳",
@@ -141,7 +151,7 @@ class MainActivity : AppCompatActivity() {
         })
 
         container.addView(text(
-            "微信 · QQ · X · 飞书  |  候选回复由你复制、粘贴并发送",
+            "微信 · QQ · X · 飞书  |  默认复制；可选快捷输入法直接填入，发送仍由你完成",
             11.5f,
             Guofeng.INK_FAINT
         ).apply {
@@ -489,6 +499,29 @@ class MainActivity : AppCompatActivity() {
 
     private fun isNotificationAccessEnabled(): Boolean =
         NotificationManagerCompat.getEnabledListenerPackages(this).contains(packageName)
+
+    private fun isZhiyanImeEnabled(): Boolean {
+        val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+        return imm.enabledInputMethodList.any {
+            it.serviceInfo.packageName == packageName &&
+                it.serviceInfo.name.endsWith(".ZhiyanInputMethodService")
+        }
+    }
+
+    private fun showImeDisclosure() {
+        AlertDialog.Builder(this)
+            .setTitle("小书童·快捷填入")
+            .setMessage(
+                "这是可选的一次性辅助输入法，不替代你的日常键盘。启用后，候选回复旁会有“快捷填入”按钮。" +
+                    "你点击后由 Android 系统让你选择“小书童·快捷填入”，它只通过标准 InputConnection.commitText 写入当前文本框，" +
+                    "不会查找微信控件、不会模拟点击、不会发送消息；写入后会尝试自动切回上一个输入法。"
+            )
+            .setNegativeButton("暂不开启", null)
+            .setPositiveButton("前往输入法设置") { _, _ ->
+                startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
+            }
+            .show()
+    }
 
     private fun showNotificationDisclosure() {
         AlertDialog.Builder(this)

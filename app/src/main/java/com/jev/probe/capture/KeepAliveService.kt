@@ -161,7 +161,7 @@ class KeepAliveService : Service() {
         val userLabel = items.last().userLabel
         val messages = items.map {
             val line = if (it.text.isBlank()) "（通知未显示正文）" else it.text
-            Msg("other", HistoryTime.stamp(it.postTime) + " " + line)
+            Msg("other", line, it.postTime)
         }
         val snapshot = ChatSnapshot(
             title = title.takeIf { it != "微信消息" },
@@ -196,7 +196,7 @@ class KeepAliveService : Service() {
             .map { it.trim() }
             .filter { it.isNotEmpty() }
             .take(MAX_CLIPBOARD_LINES)
-            .map { Msg("other", HistoryTime.stamp(now) + " " + it) }
+            .map { Msg("other", it, now) }
             .toList()
 
         if (messages.isEmpty()) {

@@ -165,7 +165,7 @@ Google Play 官方参考：
 - [x] CI 有安全回归 Gate
 - [x] 微信核心 Overlay 生命周期已与 AccessibilityService 解耦，由 KeepAliveService + OverlayRuntime 持有
 - [x] 标准 write-only IME 已实现并通过 CI；真机输入/切回体验待 V2366HA 验收
-- [ ] 最新安全架构完成 A/B 真机回归（待本阶段 CI 通过后执行）
+- [x] 微信 A 标准节点/标准截图路径已完成真机边界测试；不可用路径已从默认交互移除。微信 B 通知 profile 独立性仍待单独真机 Gate
 
 
 ## 9. 2026-09-23 便捷度恢复实现（已落地）
@@ -305,3 +305,97 @@ Run #134 首次失败仅为 GitHub-hosted Runner 下载 Gradle 时连接被重�
 - 本地 OCR 在未开 Accessibility 时不显示不可用入口。
 
 在这些真机项通过前，PR 继续保持 Draft。
+
+
+## 11. 2026-09-23 V2366HA / Android 16 真机边界结论
+
+本节记录“微信 A 为什么显示当前应用没有可用的标准控件读取路径”的最终排查结果，避免后续再次把同一问题误判为解析器 bug。
+
+### 11.1 已验证事实
+
+在主微信（user 0 / `com.tencent.mm`）前台、JEV 悬浮窗正常可见时，依次验证：
+
+1. 正式安全配置：
+   - `android:isAccessibilityTool=false`
+   - Accessibility `packageNames` 不含 `com.tencent.mm`
+   - 结果：微信没有可用标准控件树。
+
+2. 临时 debug 实验 A：
+   - 仅 debug 包设 `isAccessibilityTool=true`
+   - 仍不订阅微信 Accessibility 事件
+   - 结果：仍无可用聊天节点。
+
+3. 临时 debug 实验 B：
+   - `isAccessibilityTool=true`
+   - debug `packageNames` 临时加入 `com.tencent.mm`
+   - 完整关闭 Accessibility、force-stop JEV、重新启用，确认进程 PID 变化并冷重载 service metadata
+   - JEV 自身隐私安全结构探针结果仍为：
+     `n1_t0_d0_e0_b0_c0`
+   - 含义：1 个根节点、0 个 text 节点、0 个 contentDescription、0 个 editable 节点、0 个底部标签、0 个输入区信号。
+
+因此，当前设备/系统/微信组合下不是“解析规则写错”，而是标准 AccessibilityService 看到的微信窗口本身就是空根树。
+
+### 11.2 标准截图 / 本地 OCR 结果
+
+同一设备上还验证了用户主动本地 OCR：
+
+- 微信 A 明确处于前台；
+- OCR source 为 `ocr_local`；
+- 结果 `status=empty`、`message_count=0`；
+- 同期系统 `screencap` 的微信内容区也表现为空/黑屏。
+
+因此本地 OCR 可以继续作为其他 App 的可选能力，但当前微信版本上不能宣称它是可靠 fallback。
+
+### 11.3 已撤销的诊断配置
+
+用于边界定位的临时 debug 高权限配置已经从仓库删除，日用/安全构建重新确认：
+
+- `isAccessibilityTool=false`
+- Accessibility `packageNames` 仅含 QQ / 飞书 / X
+- 不含 `com.tencent.mm`
+- 无 `ManualWeChatVisibleText`
+- 无 `WeChatAdapter`
+- 无微信 resource-id
+- 无 `ACTION_SET_TEXT / ACTION_PASTE / ACTION_CLICK`
+- 无手势自动化
+- CI safety guard 已新增规则，禁止重新引入微信 Accessibility tree reader。
+
+### 11.4 交互修复
+
+本次根因还包含一个独立 UI ownership bug：`ChatCaptureService` 曾在 service 启动时无条件注册“分析当前页面” handler，导致微信悬浮菜单错误显示一条实际上不可用的标准控件入口。
+
+现已修正：
+
+- Accessibility manual handler 只在 QQ / X / 飞书 adapter 已确认处于聊天窗口后注册；
+- 离开适配窗口立即释放；
+- 通用安全入口不再显示“分析当前可读页面”；
+- 微信无新通知时只显示显式输入入口；
+- 微信有新通知时由 NotificationListener 的 quick-action 接管，点悬浮球直接分析通知上下文；
+- NotificationListener 重连时会重新读取 Android 当前仍活跃的微信通知并走同一去重流程，不访问微信进程。
+
+### 11.5 当前产品结论
+
+对当前 vivo / Android 16 / 微信组合，继续投入标准 Accessibility tree 解析没有工程收益。
+
+微信正式主路径固定为：
+
+```text
+Android 微信通知
+  → JEV 内存通知上下文
+  → 点悬浮球分析（或用户显式开启自动分析）
+  → 候选回复
+  → 复制 / 小书童·快捷填入 IME
+  → 用户手动发送
+```
+
+没有通知上下文时：
+
+```text
+用户主动复制文本
+  → 分析剪贴板
+  → 候选回复
+  → 复制 / IME
+  → 用户手动发送
+```
+
+不再把“直接读取当前微信页面”作为当前版本的承诺能力。

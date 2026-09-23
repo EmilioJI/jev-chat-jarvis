@@ -288,9 +288,15 @@ class OverlayController(private val ctx: Context) {
             setPadding(dp(4), dp(4), dp(4), dp(4))
             layoutParams = FrameLayout.LayoutParams(dp(196), ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(56) }
         }
-        menu.addView(menuItem("分析剪贴板") { root?.removeView(menu); onAnalyzeClipboard?.invoke() })
-        menu.addView(menuItem("本地截屏识别（可选）") { root?.removeView(menu); onOcrCapture?.invoke() })
-        menu.addView(menuItem("把当前会话存为联系人") { onSaveContact?.invoke(); root?.removeView(menu) })
+        onAnalyzeClipboard?.let {
+            menu.addView(menuItem("分析剪贴板") { root?.removeView(menu); it.invoke() })
+        }
+        onOcrCapture?.let {
+            menu.addView(menuItem("本地截屏识别（可选）") { root?.removeView(menu); it.invoke() })
+        }
+        onSaveContact?.let {
+            menu.addView(menuItem("把当前会话存为联系人") { it.invoke(); root?.removeView(menu) })
+        }
         menu.addView(menuItem("打开设置") { openSettings(); root?.removeView(menu) })
         menu.addView(menuItem("隐藏助手（本次）") { hide() })
         menu.addView(menuItem("取消") { root?.removeView(menu) })
@@ -366,9 +372,15 @@ class OverlayController(private val ctx: Context) {
         val previous = lastJudgment
         val views = ArrayList<View>()
         views.add(line("主动分析", "#5C6560", 12f, true))
-        views.add(bigButton("分析剪贴板") { onAnalyzeClipboard?.invoke() })
-        views.add(secondaryButton("分析当前可读页面") { onManualAnalyze?.invoke() })
-        views.add(secondaryButton("本地截屏识别（可选，无需图像 Key）") { onOcrCapture?.invoke() })
+        onAnalyzeClipboard?.let { action ->
+            views.add(bigButton("分析剪贴板") { action.invoke() })
+        }
+        onManualAnalyze?.let { action ->
+            views.add(secondaryButton("分析当前可读页面") { action.invoke() })
+        }
+        onOcrCapture?.let { action ->
+            views.add(secondaryButton("本地截屏识别（可选，无需图像 Key）") { action.invoke() })
+        }
         if (previous != null) {
             views.add(secondaryButton("查看上次分析结果") {
                 noteText = "上次分析结果 · 切换会话后请勿直接沿用"
@@ -391,8 +403,12 @@ class OverlayController(private val ctx: Context) {
         note?.takeIf { it.isNotBlank() }?.let {
             views.add(line(it, "#5C6560", 12f, true))
         }
-        views.add(bigButton("分析剪贴板") { onAnalyzeClipboard?.invoke() })
-        views.add(secondaryButton("本地截屏识别（无需图像 Key）") { onOcrCapture?.invoke() })
+        onAnalyzeClipboard?.let { action ->
+            views.add(bigButton("分析剪贴板") { action.invoke() })
+        }
+        onOcrCapture?.let { action ->
+            views.add(secondaryButton("本地截屏识别（无需图像 Key）") { action.invoke() })
+        }
         setContent(views)
     }
 
@@ -406,8 +422,12 @@ class OverlayController(private val ctx: Context) {
         bubble?.alpha = 0.75f
         val views = ArrayList<View>()
         views.add(line("微信安全模式 · 不读取内部控件", "#5C6560", 12f, true))
-        views.add(bigButton("分析剪贴板") { onAnalyzeClipboard?.invoke() })
-        views.add(secondaryButton("本地截屏识别（可选，无需图像 Key）") { onOcrCapture?.invoke() })
+        onAnalyzeClipboard?.let { action ->
+            views.add(bigButton("分析剪贴板") { action.invoke() })
+        }
+        onOcrCapture?.let { action ->
+            views.add(secondaryButton("本地截屏识别（可选，无需图像 Key）") { action.invoke() })
+        }
         setContent(views)
     }
 

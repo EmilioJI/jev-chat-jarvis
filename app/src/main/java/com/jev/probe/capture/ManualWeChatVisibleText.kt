@@ -34,7 +34,8 @@ internal object ManualWeChatVisibleText {
         if (width <= 0 || height <= 0) return null
 
         val items = ArrayList<Item>()
-        var hasEditableInput = false
+        var hasComposerSignal = false
+        val composerFloor = (height * 0.62).toInt()
         val stack = ArrayDeque<AccessibilityNodeInfo>()
         stack.addLast(root)
         var guard = 0
@@ -42,22 +43,38 @@ internal object ManualWeChatVisibleText {
             guard++
             val node = stack.removeLast()
             val text = node.text?.toString()?.trim()
+            val desc = node.contentDescription?.toString()?.trim()
             val cls = node.className?.toString().orEmpty()
-            if (node.isEditable || cls.endsWith("EditText")) {
-                hasEditableInput = true
+            val b = Rect()
+            node.getBoundsInScreen(b)
+
+            val editable = node.isEditable || cls.endsWith("EditText")
+            val label = when {
+                !text.isNullOrBlank() -> text
+                !desc.isNullOrBlank() -> desc
+                else -> ""
             }
-            if (!text.isNullOrBlank() && cls.endsWith("TextView")) {
-                val b = Rect()
-                node.getBoundsInScreen(b)
-                if (b.width() > 0 && b.height() > 0) {
-                    items.add(Item(text, b.left, b.top, b.right, b.bottom))
-                }
+            if (b.bottom > composerFloor &&
+                (editable || isComposerLabel(label))
+            ) {
+                hasComposerSignal = true
             }
+
+            // Use standard node text only. Do not depend on WeChat resource ids.
+            // Some versions expose message text on non-TextView accessibility
+            // classes, so class type is not used as a hard requirement.
+            if (!text.isNullOrBlank() && b.width() > 0 && b.height() > 0) {
+                items.add(Item(text, b.left, b.top, b.right, b.bottom))
+            }
+
             for (i in node.childCount - 1 downTo 0) {
                 node.getChild(i)?.let { stack.addLast(it) }
             }
         }
-        if (!hasEditableInput) return null
+        // A bottom composer signal prevents the chat list/search screen from
+        // being misread as a conversation. Voice-input mode has no EditText,
+        // so "按住说话" / "发送" are accepted as equivalent standard signals.
+        if (!hasComposerSignal) return null
         return fromVisibleItems(items, width, height)
     }
 
@@ -86,8 +103,8 @@ internal object ManualWeChatVisibleText {
             .filter { it.text.length in 1..600 }
             .filterNot { isTimestampLike(it.text) || isChrome(it.text) }
             .filter {
-                // Collapse nested TextViews that render the same string at nearly
-                // the same vertical position.
+                // Collapse nested accessibility nodes that render the same string
+                // at nearly the same vertical position.
                 seen.add(it.text + "\u0000" + (it.top / 8))
             }
             .sortedBy { it.top }
@@ -126,6 +143,11 @@ internal object ManualWeChatVisibleText {
         if (Regex("""^(上午|下午|晚上)?\s*\d{1,2}[:：]\d{2}$""").matches(t)) return true
         if (Regex("""^\d{1,2}月\d{1,2}日(\s+\d{1,2}[:：]\d{2})?$""").matches(t)) return true
         return false
+    }
+
+    private fun isComposerLabel(raw: String): Boolean {
+        val t = raw.trim()
+        return t in setOf("按住说话", "按住 说话", "发送")
     }
 
     private fun isChrome(raw: String): Boolean {

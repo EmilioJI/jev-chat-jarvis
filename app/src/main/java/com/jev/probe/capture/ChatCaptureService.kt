@@ -635,10 +635,30 @@ open class ChatCaptureService : AccessibilityService() {
             }
         }
         if (raw == null) {
+            DiagnosticsStore.record(
+                this,
+                packageName = pkg,
+                adapter = if (pkg == WECHAT_PKG) "WeChat A · manual" else adapterLabel(pkg),
+                source = "manual_tree_unavailable",
+                titlePresent = false,
+                messageCount = 0,
+                latestFrom = null,
+                status = "manual_tree_unavailable"
+            )
             overlay?.showCaptureOnly("当前应用没有可用的标准控件读取路径")
             return
         }
         if (raw.messages.isEmpty()) {
+            DiagnosticsStore.record(
+                this,
+                packageName = pkg,
+                adapter = if (pkg == WECHAT_PKG) "WeChat A · manual" else adapterLabel(pkg),
+                source = "manual_tree_empty",
+                titlePresent = !isTransientTitle(raw.title),
+                messageCount = 0,
+                latestFrom = null,
+                status = "manual_tree_empty"
+            )
             overlay?.showCaptureOnly(
                 if (pkg == WECHAT_PKG) {
                     "微信 A 当前未向标准无障碍暴露正文，可用通知/剪贴板或主动本地 OCR"
@@ -648,6 +668,17 @@ open class ChatCaptureService : AccessibilityService() {
             )
             return
         }
+
+        DiagnosticsStore.record(
+            this,
+            packageName = pkg,
+            adapter = if (pkg == WECHAT_PKG) "WeChat A · manual" else adapterLabel(pkg),
+            source = "manual_tree",
+            titlePresent = !isTransientTitle(raw.title),
+            messageCount = raw.messages.size,
+            latestFrom = raw.latestFrom,
+            status = "ok"
+        )
 
         val appScope = if (pkg == WECHAT_PKG) WECHAT_A_SCOPE else pkg
         val snapshot = stabilizeTitle(appScope, raw)

@@ -28,6 +28,65 @@ internal object ManualWeChatVisibleText {
         val centerX: Int get() = (left + right) / 2
     }
 
+    /** Privacy-safe structural probe: counts only, never stores node text. */
+    internal data class Probe(
+        val totalNodes: Int,
+        val textNodes: Int,
+        val descNodes: Int,
+        val editableNodes: Int,
+        val bottomLabeledNodes: Int,
+        val composerSignals: Int
+    )
+
+    fun probe(root: AccessibilityNodeInfo, res: Resources): Probe {
+        val height = res.displayMetrics.heightPixels
+        val composerFloor = (height * 0.62).toInt()
+        var total = 0
+        var textCount = 0
+        var descCount = 0
+        var editableCount = 0
+        var bottomLabels = 0
+        var composerCount = 0
+
+        val stack = ArrayDeque<AccessibilityNodeInfo>()
+        stack.addLast(root)
+        while (stack.isNotEmpty() && total < 7000) {
+            val node = stack.removeLast()
+            total++
+            val text = node.text?.toString()?.trim()
+            val desc = node.contentDescription?.toString()?.trim()
+            val cls = node.className?.toString().orEmpty()
+            val editable = node.isEditable || cls.endsWith("EditText")
+            if (!text.isNullOrBlank()) textCount++
+            if (!desc.isNullOrBlank()) descCount++
+            if (editable) editableCount++
+
+            val b = Rect()
+            node.getBoundsInScreen(b)
+            val label = when {
+                !text.isNullOrBlank() -> text
+                !desc.isNullOrBlank() -> desc
+                else -> ""
+            }
+            if (b.bottom > composerFloor && label.isNotBlank()) bottomLabels++
+            if (b.bottom > composerFloor && (editable || isComposerLabel(label))) {
+                composerCount++
+            }
+
+            for (i in node.childCount - 1 downTo 0) {
+                node.getChild(i)?.let { stack.addLast(it) }
+            }
+        }
+        return Probe(
+            totalNodes = total,
+            textNodes = textCount,
+            descNodes = descCount,
+            editableNodes = editableCount,
+            bottomLabeledNodes = bottomLabels,
+            composerSignals = composerCount
+        )
+    }
+
     fun extract(root: AccessibilityNodeInfo, res: Resources): ChatSnapshot? {
         val width = res.displayMetrics.widthPixels
         val height = res.displayMetrics.heightPixels

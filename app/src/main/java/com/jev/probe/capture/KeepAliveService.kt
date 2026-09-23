@@ -158,10 +158,14 @@ class KeepAliveService : Service() {
 
         val title = items.last().title
         val userLabel = items.last().userLabel
-        val messages = items.map {
-            val line = if (it.text.isBlank()) "（通知未显示正文）" else it.text
-            Msg("other", line, it.postTime)
-        }
+        val messages = items.flatMap { item ->
+            val lines = item.text.lineSequence()
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .toList()
+                .ifEmpty { listOf("（通知未显示正文）") }
+            lines.map { line -> Msg("other", line, item.postTime) }
+        }.takeLast(MAX_ANALYSIS_MESSAGES)
         val snapshot = ChatSnapshot(
             title = title.takeIf { it != "微信消息" },
             messages = messages,
@@ -277,8 +281,12 @@ class KeepAliveService : Service() {
                             error = if (ranked.isEmpty()) "排序暂不可用" else null,
                             sorting = false
                         )
-                        if (allowAutoCopy && prefs.wechatAutoCopyTopReply) {
-                            finalReplies.firstOrNull()?.text?.let { copyTopReply(it) }
+                        if (
+                            allowAutoCopy &&
+                            prefs.wechatAutoCopyTopReply &&
+                            ranked.isNotEmpty()
+                        ) {
+                            ranked.firstOrNull()?.text?.let { copyTopReply(it) }
                         }
                     }
                 }

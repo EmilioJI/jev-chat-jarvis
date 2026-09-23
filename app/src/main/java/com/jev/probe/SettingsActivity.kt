@@ -363,6 +363,16 @@ class SettingsActivity : AppCompatActivity() {
             11f, sub
         ))
 
+        val wechatAutoCopyRow = toggleRow(
+            "极速：首选回复生成后自动复制",
+            prefs.wechatAutoCopyTopReply
+        )
+        card2.addView(wechatAutoCopyRow)
+        card2.addView(text(
+            "默认关闭。开启后只把模型最终排名第一的候选放进系统剪贴板并收起面板；不会写入微信输入框，也不会发送。与“通知到达即自动分析”同时开启时，打开微信后通常只需粘贴并发送。",
+            11f, sub
+        ))
+
         // --- OCR 兜底 ---
         var ocrEngineSelected = prefs.ocrEngine
         card2.addView(label("OCR 引擎"))
@@ -507,6 +517,8 @@ class SettingsActivity : AppCompatActivity() {
             prefs.autoAnalyze = (autoRow.tag as? Boolean) ?: false
             prefs.wechatNotificationAutoAnalyze =
                 (wechatNotificationAutoRow.tag as? Boolean) ?: false
+            prefs.wechatAutoCopyTopReply =
+                (wechatAutoCopyRow.tag as? Boolean) ?: false
             prefs.ocrEngine = ocrEngineSelected
             prefs.ocrFallback = (ocrFallbackRow.tag as? Boolean) ?: false
             prefs.ocrAutoAnalyze = (ocrAutoRow.tag as? Boolean) ?: false

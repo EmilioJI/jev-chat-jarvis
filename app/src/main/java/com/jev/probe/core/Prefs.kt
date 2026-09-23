@@ -241,6 +241,15 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
         get() = sp.getBoolean(K_WECHAT_NOTIFICATION_AUTO, false)
         set(v) = sp.edit().putBoolean(K_WECHAT_NOTIFICATION_AUTO, v).apply()
 
+    /**
+     * Convenience-only output optimization. When enabled, the top ranked reply
+     * from a notification-triggered analysis is copied to the system clipboard.
+     * It never touches the chat input box and never sends.
+     */
+    var wechatAutoCopyTopReply: Boolean
+        get() = sp.getBoolean(K_WECHAT_AUTO_COPY_TOP, false)
+        set(v) = sp.edit().putBoolean(K_WECHAT_AUTO_COPY_TOP, v).apply()
+
     // ------------------------------------------------------------- helpers
 
     private fun readSecret(plainKey: String, encryptedKey: String): String =
@@ -352,6 +361,7 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
         private const val K_BUBBLE_X = "bubble_x"
         private const val K_AUTO = "auto_analyze"
         private const val K_WECHAT_NOTIFICATION_AUTO = "wechat_notification_auto_analyze"
+        private const val K_WECHAT_AUTO_COPY_TOP = "wechat_auto_copy_top_reply"
 
         const val PROVIDER_OPENROUTER = "openrouter"
         const val PROVIDER_TYPESAFE = "typesafe"

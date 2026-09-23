@@ -34,6 +34,7 @@ internal object ManualWeChatVisibleText {
         if (width <= 0 || height <= 0) return null
 
         val items = ArrayList<Item>()
+        var hasEditableInput = false
         val stack = ArrayDeque<AccessibilityNodeInfo>()
         stack.addLast(root)
         var guard = 0
@@ -42,6 +43,9 @@ internal object ManualWeChatVisibleText {
             val node = stack.removeLast()
             val text = node.text?.toString()?.trim()
             val cls = node.className?.toString().orEmpty()
+            if (node.isEditable || cls.endsWith("EditText")) {
+                hasEditableInput = true
+            }
             if (!text.isNullOrBlank() && cls.endsWith("TextView")) {
                 val b = Rect()
                 node.getBoundsInScreen(b)
@@ -53,6 +57,7 @@ internal object ManualWeChatVisibleText {
                 node.getChild(i)?.let { stack.addLast(it) }
             }
         }
+        if (!hasEditableInput) return null
         return fromVisibleItems(items, width, height)
     }
 

@@ -526,6 +526,10 @@ class OverlayController(private val ctx: Context) {
 
     fun toast(msg: String) = Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show()
 
+    fun collapsePanel() {
+        if (expanded) toggle()
+    }
+
     fun hide() {
         val r = root ?: return
         runCatching { wm.removeView(r) }

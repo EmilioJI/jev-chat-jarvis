@@ -353,6 +353,16 @@ class SettingsActivity : AppCompatActivity() {
         card2.addView(autoRow)
         card2.addView(text("默认关闭。微信始终采用主动模式：点悬浮球后才读取/分析当前内容。", 11f, sub))
 
+        val wechatNotificationAutoRow = toggleRow(
+            "微信通知到达即自动分析（可选）",
+            prefs.wechatNotificationAutoAnalyze
+        )
+        card2.addView(wechatNotificationAutoRow)
+        card2.addView(text(
+            "默认关闭。开启后只使用 Android 通知标题、摘要和时间自动分析；仍不读取微信内部控件。关闭时则是“通知到达→悬浮球亮→点一下分析”。",
+            11f, sub
+        ))
+
         // --- OCR 兜底 ---
         var ocrEngineSelected = prefs.ocrEngine
         card2.addView(label("OCR 引擎"))
@@ -495,6 +505,8 @@ class SettingsActivity : AppCompatActivity() {
             prefs.whitelist = wlEdit.text.toString().split("\n")
                 .map { it.trim() }.filter { it.isNotEmpty() }.toSet()
             prefs.autoAnalyze = (autoRow.tag as? Boolean) ?: false
+            prefs.wechatNotificationAutoAnalyze =
+                (wechatNotificationAutoRow.tag as? Boolean) ?: false
             prefs.ocrEngine = ocrEngineSelected
             prefs.ocrFallback = (ocrFallbackRow.tag as? Boolean) ?: false
             prefs.ocrAutoAnalyze = (ocrAutoRow.tag as? Boolean) ?: false

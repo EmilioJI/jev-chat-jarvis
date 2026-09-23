@@ -101,11 +101,13 @@ class KbStore private constructor(context: Context) {
 
     /**
      * Match a conversation title to a contact by normalized name or alias.
-     * Never creates anything: an unknown title simply has no contact (v1.3
-     * revision — contacts are only ever created by the user).
+     * Never creates anything: an unknown title simply has no contact.
      *
-     * @param app package name of the chat app the title came from; used only to
-     *        prefer a contact that already knows this app when two match.
+     * A profile-scoped WeChat app id (for example "com.tencent.mm@UserHandle{0}")
+     * is a hard namespace boundary. If no same-name contact carries that exact
+     * scope, return null instead of falling back to another same-name contact.
+     * This prevents WeChat A/B from sharing relationship notes or history merely
+     * because both accounts use the same display name.
      */
     fun findContact(title: String, app: String): Contact? {
         synchronized(lock) {
@@ -114,8 +116,7 @@ class KbStore private constructor(context: Context) {
             val hits = loadContacts().filter { c ->
                 normalizeName(c.name) == want || c.aliases.any { normalizeName(it) == want }
             }
-            if (hits.isEmpty()) return null
-            return hits.firstOrNull { app.isNotBlank() && it.apps.contains(app) } ?: hits.first()
+            return chooseContactForApp(hits, app)
         }
     }
 
@@ -517,6 +518,18 @@ class KbStore private constructor(context: Context) {
             }
 
         fun newId(): String = java.util.UUID.randomUUID().toString().substring(0, 12)
+
+        internal fun chooseContactForApp(hits: List<Contact>, app: String): Contact? {
+            if (hits.isEmpty()) return null
+            if (app.isNotBlank()) {
+                hits.firstOrNull { it.apps.contains(app) }?.let { return it }
+            }
+            if (isProfileScopedWeChat(app)) return null
+            return hits.first()
+        }
+
+        internal fun isProfileScopedWeChat(app: String): Boolean =
+            app.startsWith("com.tencent.mm@")
 
         /**
          * Compile a pattern without ever taking the class down with it. A

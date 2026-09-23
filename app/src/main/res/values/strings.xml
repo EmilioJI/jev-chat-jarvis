@@ -2,4 +2,5 @@
     <string name="app_name">小书童·知言</string>
     <string name="a11y_intro">在你主动操作时读取当前可见内容或截屏分析，并显示候选回复；不会自动发送消息。</string>
     <string name="a11y_desc">仅在你主动分析或显式开启相应功能时读取当前活动窗口中可见的文字和控件结构，或截取当前画面进行本地 OCR。视觉 API 为可选项，只有你明确选择后才会上传裁剪后的聊天区域。分析内容会发送给你自己配置的模型服务商。不会自动点击发送。</string>
+    <string name="ime_name">小书童·快捷填入</string>
 </resources>

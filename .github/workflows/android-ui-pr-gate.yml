@@ -57,7 +57,7 @@ jobs:
             exit 1
           fi
 
-          BANNED='SelectToSpeakService|com\.tencent\.mm:id/|ACTION_SET_TEXT|ACTION_PASTE|ACTION_CLICK|dispatchGesture|Xposed|LSPosed|Frida|Magisk'
+          BANNED='SelectToSpeakService|ManualWeChatVisibleText|class WeChatAdapter|com\.tencent\.mm:id/|ACTION_SET_TEXT|ACTION_PASTE|ACTION_CLICK|dispatchGesture|Xposed|LSPosed|Frida|Magisk'
           if grep -R -n -E "$BANNED" app/src/main/java app/src/main/res/xml; then
             echo "Banned WeChat-evasion/UI-automation mechanism found" >&2
             exit 1

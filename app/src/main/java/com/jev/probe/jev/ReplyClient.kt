@@ -22,8 +22,12 @@ class ReplyClient(private val prefs: Prefs) {
      *        consistent with them and invent nothing beyond them.
      */
     fun draft(snapshot: ChatSnapshot, relationship: String, ctx: ChatContext? = null): List<String> {
+        val now = System.currentTimeMillis()
         val convo = snapshot.messages.takeLast(10).joinToString("\n") {
-            (if (it.side == "me") "我" else "对方") + "：" + it.text
+            val stamp = it.ts?.takeIf { t -> t > 0L }?.let { t ->
+                HistoryTime.stamp(t, now) + " "
+            }.orEmpty()
+            stamp + (if (it.side == "me") "我" else "对方") + "：" + it.text
         }
         val sys = "你是中文即时通讯回复助手。只输出一个 JSON 数组，含且仅含 3 条候选回复文本，" +
             "三条策略要有区别（例如：一条稳妥承接、一条给具体行动或承诺、一条简短低姿态）。" +

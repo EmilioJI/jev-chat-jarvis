@@ -63,6 +63,12 @@ jobs:
             exit 1
           fi
 
+          IME_READ_BANNED='getTextBeforeCursor|getTextAfterCursor|getSelectedText|getExtractedText|performEditorAction|sendKeyEvent|deleteSurroundingText'
+          if grep -R -n -E "$IME_READ_BANNED" app/src/main/java/com/jev/probe/ime; then
+            echo "Zhiyan IME must remain write-only and must never trigger editor actions" >&2
+            exit 1
+          fi
+
       - name: Unit tests and debug APK
         shell: bash
         run: |

@@ -105,7 +105,7 @@
 推荐 **F：Hybrid Active Mode**：
 
 ```text
-标准 OverlayService
+前台助手服务（KeepAliveService）+ OverlayRuntime
         │
         ├─ 分析剪贴板 / Android Share（默认）
         ├─ 本地 ML Kit OCR（用户主动，可选）
@@ -130,7 +130,7 @@
 ## 6. 当前剩余风险
 
 - 无法承诺“零封号风险”。任何第三方聊天辅助工具都可能受到平台规则、版本与风控策略变化影响。
-- 当前 App 仍包含 AccessibilityService，用于非微信适配和可选系统截屏；长期最好把微信核心体验彻底从 AccessibilityService 生命周期中解耦。
+- 当前 App 仍包含 AccessibilityService，用于 QQ/X/飞书标准适配和可选系统截屏；微信核心悬浮、通知分析、剪贴板和 IME 路径已经与 AccessibilityService 生命周期解耦。
 - Accessibility 截屏虽是标准 Android API，但仍是敏感能力；正式上架需准确披露。
 - 本地 OCR 对说话人、昵称、时间分隔的识别存在误差，不能把推断写成事实。
 - 剪贴板路径无法自动获得联系人昵称或完整历史，这是降低内部依赖后的明确体验取舍。
@@ -163,8 +163,8 @@ Google Play 官方参考：
 - [x] 关系不按昵称猜测
 - [x] 历史带记录时间和时效规则
 - [x] CI 有安全回归 Gate
-- [ ] OverlayService 与 AccessibilityService 完全解耦（下一阶段）
-- [ ] 标准 IME 恢复直接输入（下一阶段）
+- [x] 微信核心 Overlay 生命周期已与 AccessibilityService 解耦，由 KeepAliveService + OverlayRuntime 持有
+- [x] 标准 write-only IME 已实现并通过 CI；真机输入/切回体验待 V2366HA 验收
 - [ ] 最新安全架构完成 A/B 真机回归（待本阶段 CI 通过后执行）
 
 

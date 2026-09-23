@@ -14,11 +14,32 @@ object ReplyHandoff {
 
     @Volatile private var updatedAt: Long = 0L
     @Volatile private var replies: List<RankedReply> = emptyList()
+    @Volatile private var armedText: String? = null
+    @Volatile private var armedAt: Long = 0L
 
     @Synchronized
     fun publish(items: List<RankedReply>) {
         replies = items.take(3).map { it.copy() }
         updatedAt = System.currentTimeMillis()
+    }
+
+    @Synchronized
+    fun arm(text: String) {
+        armedText = text
+        armedAt = System.currentTimeMillis()
+    }
+
+    @Synchronized
+    fun consumeArmed(now: Long = System.currentTimeMillis()): String? {
+        val text = armedText
+        if (text.isNullOrBlank() || armedAt <= 0L || now - armedAt > TTL_MS) {
+            armedText = null
+            armedAt = 0L
+            return null
+        }
+        armedText = null
+        armedAt = 0L
+        return text
     }
 
     @Synchronized
@@ -34,5 +55,7 @@ object ReplyHandoff {
     fun clear() {
         replies = emptyList()
         updatedAt = 0L
+        armedText = null
+        armedAt = 0L
     }
 }

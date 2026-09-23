@@ -1,10 +1,6 @@
 package com.jev.probe.capture
 
 import android.accessibilityservice.AccessibilityService
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
 import android.graphics.Bitmap
 import android.graphics.Rect
 import android.os.Build
@@ -14,7 +10,6 @@ import android.os.Looper
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
-import com.jev.probe.ClipboardImportActivity
 import com.jev.probe.capture.ocr.MlKitOcr
 import com.jev.probe.capture.ocr.OcrLine
 import com.jev.probe.capture.ocr.ScreenCapture
@@ -33,6 +28,7 @@ import com.jev.probe.jev.ContactSummaryManager
 import com.jev.probe.jev.JevClient
 import com.jev.probe.jev.VisionClient
 import com.jev.probe.overlay.OverlayController
+import com.jev.probe.overlay.OverlayRuntime
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 
@@ -141,29 +137,10 @@ open class ChatCaptureService : AccessibilityService() {
      *  See [ocrSignature]: this is the brake on the OCR path. */
     private var lastOcrSignature: String = ""
 
-    private var clipboardReceiverRegistered = false
-    private val clipboardReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action != ClipboardImportActivity.ACTION_CLIPBOARD_READY) return
-            val text = intent.getStringExtra(ClipboardImportActivity.EXTRA_TEXT).orEmpty()
-            handleClipboardText(text)
-        }
-    }
-
     override fun onServiceConnected() {
         super.onServiceConnected()
         prefs = Prefs(this)
-        if (!clipboardReceiverRegistered) {
-            val filter = IntentFilter(ClipboardImportActivity.ACTION_CLIPBOARD_READY)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                registerReceiver(clipboardReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-            } else {
-                @Suppress("DEPRECATION")
-                registerReceiver(clipboardReceiver, filter)
-            }
-            clipboardReceiverRegistered = true
-        }
-        overlay = OverlayController(this)
+        overlay = OverlayRuntime.get(this)
         overlay?.onManualAnalyze = { manualAnalyzeCurrentWindow() }
         // Bubble menu: file the open conversation as a knowledge-base contact.
         // Contacts are never created automatically — this is the one-tap way in.
@@ -183,17 +160,6 @@ open class ChatCaptureService : AccessibilityService() {
         }
         // Bubble menu: one manual screenshot + OCR, for any app at all.
         overlay?.onOcrCapture = { ocrCaptureManual() }
-        // Bubble menu: analyze only text the user explicitly copied.
-        overlay?.onAnalyzeClipboard = { analyzeClipboardText() }
-
-        // Keep a collapsed entry point alive independently of chat-tree timing.
-        // On clone-user apps (e.g. vivo app clone / user 999) accessibility
-        // events may never reach this user-0 service, so the bubble itself must
-        // not depend on receiving a readable chat window first.
-        if (prefs.enabled) {
-            main.post { overlay?.showCaptureOnly() }
-        }
-
         // Keep the process at foreground importance so MIUI does not freeze us.
         runCatching { KeepAliveService.start(this) }
         // Load the bundled OCR model now, off the main thread: the first
@@ -681,51 +647,6 @@ open class ChatCaptureService : AccessibilityService() {
         runAnalysis()
     }
 
-    /**
-     * Launch a transparent foreground Activity as a direct result of the user tap.
-     * Android 10+ restricts background clipboard reads, so this service never
-     * reads the system clipboard directly.
-     */
-    private fun analyzeClipboardText() {
-        val intent = Intent(this, ClipboardImportActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
-        runCatching { startActivity(intent) }
-            .onFailure { e -> overlay?.toast("无法打开剪贴板导入：" + e.javaClass.simpleName) }
-    }
-
-    /** Process text handed back by the foreground clipboard Activity. */
-    private fun handleClipboardText(raw: String) {
-        val text = raw.trim()
-        if (text.isBlank()) {
-            overlay?.toast("剪贴板没有可分析文字；请先在微信里复制")
-            return
-        }
-        val msgs = text.lineSequence()
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .take(30)
-            .map { Msg("other", it) }
-            .toList()
-        if (msgs.isEmpty()) {
-            overlay?.toast("剪贴板没有可分析文字")
-            return
-        }
-
-        val pkg = if (cloneUserMode) WECHAT_PKG else foregroundPkg.orEmpty()
-        val snapshot = ChatSnapshot(
-            title = null,
-            messages = msgs,
-            note = "剪贴板文本 · 由你主动复制；未自动判断说话人"
-        )
-        activePkg = pkg
-        currentSnapshot = snapshot
-        invalidateAnalysis()
-        currentSnapshot = snapshot
-        pendingSnapshot = snapshot
-        pendingHistoryHint = HistoryCaptureHint.CONSERVATIVE
-        runAnalysis()
-    }
-
     // ------------------------------------------------------------------ OCR
 
     /**
@@ -1171,22 +1092,15 @@ open class ChatCaptureService : AccessibilityService() {
     override fun onDestroy() {
         super.onDestroy()
         invalidateAnalysis()
-        if (clipboardReceiverRegistered) {
-            runCatching { unregisterReceiver(clipboardReceiver) }
-            clipboardReceiverRegistered = false
-        }
         main.removeCallbacks(windowSettleFast)
         main.removeCallbacks(windowSettleLate)
         main.removeCallbacks(contentSettle)
         main.removeCallbacks(restoreSettleFast)
         main.removeCallbacks(restoreSettleLate)
-        // Tear the overlay down and cut its callback so a stale button tap can
-        // never call back into this dead instance.
+        // Keep the process-wide overlay alive; only remove callbacks that require
+        // this AccessibilityService instance.
         overlay?.onManualAnalyze = null
-        overlay?.onSaveContact = null
         overlay?.onOcrCapture = null
-        overlay?.onAnalyzeClipboard = null
-        overlay?.hide()
         overlay = null
         worker.shutdownNow()
         maintenanceWorker.shutdownNow()

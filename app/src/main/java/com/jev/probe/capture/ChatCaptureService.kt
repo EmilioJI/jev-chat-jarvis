@@ -612,7 +612,11 @@ open class ChatCaptureService : AccessibilityService() {
     }
 
     /**
-     * Explicit one-shot standard-node read for supported non-WeChat apps.
+     * Explicit one-shot standard-node read initiated by the user.
+     *
+     * Normal-user WeChat A gets a generic visible-text reader with no WeChat
+     * resource ids and no event subscription. Clone-profile WeChat B remains
+     * outside Accessibility and uses notification / clipboard / optional OCR.
      * Failure never falls through to screenshot automatically.
      */
     private fun manualAnalyzeCurrentWindow() {
@@ -622,26 +626,37 @@ open class ChatCaptureService : AccessibilityService() {
             return
         }
         val pkg = root.packageName?.toString().orEmpty()
-        val adapter = adapters[pkg]
-        if (adapter == null) {
-            overlay?.showCaptureOnly("当前应用没有控件适配")
+        val raw = when (pkg) {
+            WECHAT_PKG -> runCatching {
+                ManualWeChatVisibleText.extract(root, resources)
+            }.getOrNull()
+            else -> adapters[pkg]?.let { adapter ->
+                runCatching { adapter.extract(root, resources) }.getOrNull()
+            }
+        }
+        if (raw == null) {
+            overlay?.showCaptureOnly("当前应用没有可用的标准控件读取路径")
             return
         }
-        val raw = runCatching { adapter.extract(root, resources) }.getOrNull()
-        if (raw == null || raw.messages.isEmpty()) {
+        if (raw.messages.isEmpty()) {
             overlay?.showCaptureOnly(
-                "当前页面控件不可读，可选剪贴板或本地 OCR"
+                if (pkg == WECHAT_PKG) {
+                    "微信 A 当前未向标准无障碍暴露正文，可用通知/剪贴板或主动本地 OCR"
+                } else {
+                    "当前页面控件不可读，可选剪贴板或本地 OCR"
+                }
             )
             return
         }
 
-        val snapshot = stabilizeTitle(pkg, raw)
+        val appScope = if (pkg == WECHAT_PKG) WECHAT_A_SCOPE else pkg
+        val snapshot = stabilizeTitle(appScope, raw)
         if (!prefs.isAllowed(snapshot.title)) {
             overlay?.toast("当前会话不在白名单")
             return
         }
         cloneUserMode = false
-        activePkg = pkg
+        activePkg = appScope
         foregroundPkg = pkg
         currentSnapshot = snapshot
         lastSignature = snapshot.signature()
@@ -1116,6 +1131,7 @@ open class ChatCaptureService : AccessibilityService() {
     companion object {
         private const val TAG = "JEVASSIST"
         private const val WECHAT_PKG = "com.tencent.mm"
+        private const val WECHAT_A_SCOPE = "com.tencent.mm@UserHandle{0}"
 
         /** Whole-screen OCR keeps the middle: no action bar, no input area. */
         private const val TOP_CROP = 0.12f

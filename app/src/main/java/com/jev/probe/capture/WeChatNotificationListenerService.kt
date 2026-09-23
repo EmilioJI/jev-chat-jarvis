@@ -61,13 +61,13 @@ class WeChatNotificationListenerService : NotificationListenerService() {
             recent.entries.removeIf { it.value < cutoff }
         }
 
-        val userId = runCatching { n.user.identifier }.getOrDefault(0)
+        val userLabel = n.user?.toString().orEmpty().ifBlank { "default" }
         KeepAliveService.pushWeChatNotification(
             this,
             title = title.take(MAX_TITLE_CHARS),
             text = text.take(MAX_TEXT_CHARS),
             postTime = n.postTime.coerceAtLeast(1L),
-            userId = userId
+            userLabel = userLabel
         )
     }
 

@@ -620,8 +620,18 @@ open class ChatCaptureService : AccessibilityService() {
      * Failure never falls through to screenshot automatically.
      */
     private fun manualAnalyzeCurrentWindow() {
-        val root = rootInActiveWindow
+        val root = manualReadRoot()
         if (root == null) {
+            DiagnosticsStore.record(
+                this,
+                packageName = foregroundPkg.orEmpty(),
+                adapter = "manual",
+                source = "manual_root_unavailable",
+                titlePresent = false,
+                messageCount = 0,
+                latestFrom = null,
+                status = "manual_root_unavailable"
+            )
             overlay?.toast("当前窗口控件不可读，可改用剪贴板或本地截屏")
             return
         }
@@ -697,6 +707,35 @@ open class ChatCaptureService : AccessibilityService() {
         pendingSnapshot = snapshot
         pendingHistoryHint = HistoryCaptureHint.CONSERVATIVE
         runAnalysis()
+    }
+
+    /**
+     * Root used only for an explicit user-triggered one-shot read.
+     *
+     * Some OEM / Android 16 combinations return null from rootInActiveWindow
+     * when the service does not subscribe to the foreground package's events,
+     * even though the active accessibility window itself can still expose a
+     * standard root. Fall back to AccessibilityService.windows without changing
+     * packageNames or subscribing to WeChat events.
+     */
+    private fun manualReadRoot(): AccessibilityNodeInfo? {
+        rootInActiveWindow?.let { return it }
+
+        val candidates = runCatching { windows }.getOrNull().orEmpty()
+        val activeRoots = candidates.asSequence()
+            .filter { it.isActive || it.isFocused }
+            .mapNotNull { window -> runCatching { window.root }.getOrNull() }
+            .toList()
+
+        activeRoots.firstOrNull {
+            it.packageName?.toString() == WECHAT_PKG
+        }?.let { return it }
+
+        activeRoots.firstOrNull()?.let { return it }
+
+        return candidates.asSequence()
+            .mapNotNull { window -> runCatching { window.root }.getOrNull() }
+            .firstOrNull { it.packageName?.toString() == WECHAT_PKG }
     }
 
     // ------------------------------------------------------------------ OCR

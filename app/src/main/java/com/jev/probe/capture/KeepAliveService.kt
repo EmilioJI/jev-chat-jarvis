@@ -71,7 +71,6 @@ class KeepAliveService : Service() {
 
         overlay = OverlayRuntime.get(this)
         overlay.onAnalyzeClipboard = { launchClipboardImport() }
-        overlay.onSaveContact = { saveLatestContact() }
 
         if (!clipboardReceiverRegistered) {
             val filter = IntentFilter(ClipboardImportActivity.ACTION_CLIPBOARD_READY)
@@ -145,6 +144,8 @@ class KeepAliveService : Service() {
         latestKey = key
         latestAt = System.currentTimeMillis()
 
+        overlay.setSaveContactHandler(this) { saveLatestContact() }
+        overlay.onManualAnalyze = null
         overlay.showNotificationReady(title) { analyzeNotification(key) }
         if (prefs.wechatNotificationAutoAnalyze && prefs.hasKey()) {
             analyzeNotification(key)
@@ -325,6 +326,7 @@ class KeepAliveService : Service() {
             clipboardReceiverRegistered = false
         }
         epoch.incrementAndGet()
+        overlay.setSaveContactHandler(this, null)
         worker.shutdownNow()
         OverlayRuntime.release()
         super.onDestroy()

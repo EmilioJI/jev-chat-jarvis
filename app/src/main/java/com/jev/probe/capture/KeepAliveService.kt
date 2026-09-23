@@ -144,7 +144,7 @@ class KeepAliveService : Service() {
         latestAt = System.currentTimeMillis()
 
         overlay.setSaveContactHandler(this) { saveLatestContact() }
-        overlay.onManualAnalyze = null
+        overlay.setManualAnalyzeHandler(this) { analyzeNotification(key) }
         overlay.showNotificationReady(title) { analyzeNotification(key) }
         if (prefs.wechatNotificationAutoAnalyze && prefs.hasKey()) {
             analyzeNotification(key)
@@ -337,8 +337,13 @@ class KeepAliveService : Service() {
         }
         epoch.incrementAndGet()
         overlay.setSaveContactHandler(this, null)
+        overlay.setManualAnalyzeHandler(this, null)
+        overlay.onAnalyzeClipboard = null
         worker.shutdownNow()
-        OverlayRuntime.release()
+        // Keep the process-wide controller instance so an already-bound optional
+        // AccessibilityService cannot retain a stale overlay object. Hiding is
+        // enough; a later service restart reuses the same controller.
+        overlay.hide()
         super.onDestroy()
     }
 

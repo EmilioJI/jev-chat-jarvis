@@ -5,6 +5,8 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.BroadcastReceiver
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -165,7 +167,7 @@ class KeepAliveService : Service() {
             messages = messages,
             note = "微信通知上下文 · 时间来自 Android 通知 · $userLabel；未读取微信内部控件"
         )
-        analyzeSnapshot(snapshot, WECHAT_PKG, HistoryCaptureHint.NEWEST_SCREEN)
+        analyzeSnapshot(snapshot, WECHAT_PKG, HistoryCaptureHint.NEWEST_SCREEN, allowAutoCopy = true)
     }
 
     private fun launchClipboardImport() {
@@ -212,7 +214,8 @@ class KeepAliveService : Service() {
     private fun analyzeSnapshot(
         snapshot: ChatSnapshot,
         app: String,
-        historyHint: HistoryCaptureHint
+        historyHint: HistoryCaptureHint,
+        allowAutoCopy: Boolean = false
     ) {
         if (!prefs.hasKey()) {
             overlay.showError("未设置判断接口密钥，去设置里填")
@@ -260,17 +263,28 @@ class KeepAliveService : Service() {
                 }.getOrElse { emptyList() }
                 if (epoch.get() != myEpoch) return@execute
 
+                val finalReplies = if (ranked.isNotEmpty()) ranked else provisional
                 mainPost {
                     if (epoch.get() == myEpoch) {
                         overlay.showReplies(
-                            if (ranked.isNotEmpty()) ranked else provisional,
+                            finalReplies,
                             error = if (ranked.isEmpty()) "排序暂不可用" else null,
                             sorting = false
                         )
+                        if (allowAutoCopy && prefs.wechatAutoCopyTopReply) {
+                            finalReplies.firstOrNull()?.text?.let { copyTopReply(it) }
+                        }
                     }
                 }
             }
         }
+    }
+
+    private fun copyTopReply(text: String) {
+        val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText("小书童首选回复", text))
+        overlay.toast("首选回复已复制；粘贴后由你发送")
+        overlay.collapsePanel()
     }
 
     private fun effectiveRelationship(snapshot: ChatSnapshot, ctx: ChatContext?): String {

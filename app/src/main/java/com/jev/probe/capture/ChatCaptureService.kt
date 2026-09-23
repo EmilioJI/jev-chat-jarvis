@@ -142,22 +142,6 @@ open class ChatCaptureService : AccessibilityService() {
         prefs = Prefs(this)
         overlay = OverlayRuntime.get(this)
         overlay?.onManualAnalyze = { manualAnalyzeCurrentWindow() }
-        // Bubble menu: file the open conversation as a knowledge-base contact.
-        // Contacts are never created automatically — this is the one-tap way in.
-        overlay?.onSaveContact = {
-            val title = currentSnapshot?.title
-            val pkg = activePkg ?: foregroundPkg ?: ""
-            when {
-                title.isNullOrBlank() -> overlay?.toast("当前会话没有标题，存不了")
-                isTransientTitle(title) -> overlay?.toast("当前会话标题还没加载出来，稍后再试")
-                else -> submit {
-                    val msg = try {
-                        KbStore.get(this).saveOrMergeContact(title, pkg)
-                    } catch (e: Exception) { "保存失败：${e.javaClass.simpleName}" }
-                    main.post { overlay?.toast(msg) }
-                }
-            }
-        }
         // Bubble menu: one manual screenshot + OCR, for any app at all.
         overlay?.onOcrCapture = { ocrCaptureManual() }
         // Keep the process at foreground importance so MIUI does not freeze us.
@@ -227,6 +211,7 @@ open class ChatCaptureService : AccessibilityService() {
                 // after that boundary, but its display overlay can remain visible.
                 currentSnapshot = null
                 activePkg = null
+                overlay?.setSaveContactHandler(this, null)
                 main.post {
                     if (drop) {
                         overlay?.hide()
@@ -259,6 +244,23 @@ open class ChatCaptureService : AccessibilityService() {
         }
     }
 
+    private fun saveCurrentAccessibilityContact() {
+        val title = currentSnapshot?.title
+        val pkg = activePkg ?: foregroundPkg ?: ""
+        when {
+            title.isNullOrBlank() -> overlay?.toast("当前会话没有标题，存不了")
+            isTransientTitle(title) -> overlay?.toast("当前会话标题还没加载出来，稍后再试")
+            else -> submit {
+                val msg = try {
+                    KbStore.get(this).saveOrMergeContact(title, pkg)
+                } catch (e: Exception) {
+                    "保存失败：" + e.javaClass.simpleName
+                }
+                main.post { overlay?.toast(msg) }
+            }
+        }
+    }
+
     private fun retryCapture(trigger: CaptureTrigger) {
         if (!::prefs.isInitialized || !prefs.enabled) return
         runCatching { maybeCapture(trigger) }
@@ -285,6 +287,10 @@ open class ChatCaptureService : AccessibilityService() {
         // Apps with no adapter are never handled automatically (v1.3 revision):
         // the only way in for them is the bubble menu's "截屏识别一次".
         val adapter = adapters[pkg] ?: return
+        // This adapted source now owns contact actions in the shared overlay.
+        overlay?.setSaveContactHandler(this) { saveCurrentAccessibilityContact() }
+        overlay?.onManualAnalyze = { manualAnalyzeCurrentWindow() }
+        overlay?.onOcrCapture = { ocrCaptureManual() }
         // Only act inside a chat window (the adapter returns null elsewhere).
         val rawSnapshot = adapter.extract(root, resources) ?: return
         // Stabilize the title BEFORE anything below reads it: some apps (X) show
@@ -1101,6 +1107,7 @@ open class ChatCaptureService : AccessibilityService() {
         // this AccessibilityService instance.
         overlay?.onManualAnalyze = null
         overlay?.onOcrCapture = null
+        overlay?.setSaveContactHandler(this, null)
         overlay = null
         worker.shutdownNow()
         maintenanceWorker.shutdownNow()

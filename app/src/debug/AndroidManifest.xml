@@ -2,9 +2,31 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <application>
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" tools:node="remove" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" tools:node="remove" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" tools:node="remove" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" tools:node="remove" />
+
+    <application
+        android:label="JEV WeChat A/B Probe"
+        tools:replace="android:label">
+
+        <activity
+            android:name=".MainActivity"
+            tools:node="remove" />
+
         <service
             android:name=".capture.ChatCaptureService"
+            tools:node="remove" />
+        <service
+            android:name=".capture.WeChatNotificationListenerService"
+            tools:node="remove" />
+        <service
+            android:name=".ime.ZhiyanInputMethodService"
+            tools:node="remove" />
+        <service
+            android:name=".capture.KeepAliveService"
             tools:node="remove" />
 
         <service

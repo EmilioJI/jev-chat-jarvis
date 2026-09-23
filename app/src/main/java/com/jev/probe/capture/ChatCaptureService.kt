@@ -141,7 +141,10 @@ open class ChatCaptureService : AccessibilityService() {
         super.onServiceConnected()
         prefs = Prefs(this)
         overlay = OverlayRuntime.get(this)
-        overlay?.setManualAnalyzeHandler(this) { manualAnalyzeCurrentWindow() }
+        // Manual current-page analysis is owned only while an adapted
+        // QQ/X/Feishu chat is actually visible. Do not globally claim this
+        // action: doing so can leak a stale "read current page" entry into
+        // WeChat, whose safe path is notification/clipboard instead.
         // Bubble menu: one manual screenshot + OCR, for any app at all.
         overlay?.onOcrCapture = { ocrCaptureManual() }
         // Keep the process at foreground importance so MIUI does not freeze us.
@@ -212,6 +215,7 @@ open class ChatCaptureService : AccessibilityService() {
                 currentSnapshot = null
                 activePkg = null
                 overlay?.setSaveContactHandler(this, null)
+                overlay?.setManualAnalyzeHandler(this, null)
                 main.post {
                     if (drop) {
                         overlay?.hide()
@@ -287,12 +291,13 @@ open class ChatCaptureService : AccessibilityService() {
         // Apps with no adapter are never handled automatically (v1.3 revision):
         // the only way in for them is the bubble menu's "截屏识别一次".
         val adapter = adapters[pkg] ?: return
-        // This adapted source now owns contact actions in the shared overlay.
+        // Only act inside a chat window (the adapter returns null elsewhere).
+        val rawSnapshot = adapter.extract(root, resources) ?: return
+        // This adapted source now owns contact/manual actions in the shared
+        // overlay. Registration happens only after a chat window is proven.
         overlay?.setSaveContactHandler(this) { saveCurrentAccessibilityContact() }
         overlay?.setManualAnalyzeHandler(this) { manualAnalyzeCurrentWindow() }
         overlay?.onOcrCapture = { ocrCaptureManual() }
-        // Only act inside a chat window (the adapter returns null elsewhere).
-        val rawSnapshot = adapter.extract(root, resources) ?: return
         // Stabilize the title BEFORE anything below reads it: some apps (X) show
         // a transient "连接中…" title for a moment right after opening a thread.
         val snapshot = stabilizeTitle(pkg ?: "", rawSnapshot)
@@ -632,67 +637,59 @@ open class ChatCaptureService : AccessibilityService() {
                 latestFrom = null,
                 status = "manual_root_unavailable"
             )
-            overlay?.toast("当前窗口控件不可读，可改用剪贴板或本地截屏")
+            overlay?.toast("当前窗口控件不可读")
             return
         }
+
         val pkg = root.packageName?.toString().orEmpty()
-        val raw = when (pkg) {
-            WECHAT_PKG -> runCatching {
-                ManualWeChatVisibleText.extract(root, resources)
-            }.getOrNull()
-            else -> adapters[pkg]?.let { adapter ->
-                runCatching { adapter.extract(root, resources) }.getOrNull()
-            }
+        val adapter = adapters[pkg]
+        if (adapter == null) {
+            // WeChat and other unadapted apps must never fall through to a
+            // generic Accessibility tree reader. Their entry points are
+            // notification context, explicit clipboard text, or user-requested
+            // local OCR where the platform exposes pixels.
+            overlay?.setManualAnalyzeHandler(this, null)
+            overlay?.showCaptureOnly(
+                if (pkg == WECHAT_PKG) "微信使用通知上下文或剪贴板分析"
+                else "当前应用没有标准控件适配"
+            )
+            return
         }
+
+        val raw = runCatching { adapter.extract(root, resources) }.getOrNull()
         if (raw == null) {
-            val probeStatus = if (pkg == WECHAT_PKG) {
-                runCatching { ManualWeChatVisibleText.probe(root, resources) }
-                    .getOrNull()
-                    ?.let { p ->
-                        "n${p.totalNodes}_t${p.textNodes}_d${p.descNodes}_" +
-                            "e${p.editableNodes}_b${p.bottomLabeledNodes}_c${p.composerSignals}"
-                    }
-            } else {
-                null
-            }
             DiagnosticsStore.record(
                 this,
                 packageName = pkg,
-                adapter = if (pkg == WECHAT_PKG) "WeChat A · manual" else adapterLabel(pkg),
+                adapter = adapterLabel(pkg),
                 source = "manual_tree_unavailable",
                 titlePresent = false,
                 messageCount = 0,
                 latestFrom = null,
-                status = probeStatus ?: "manual_tree_unavailable"
+                status = "manual_tree_unavailable"
             )
-            overlay?.showCaptureOnly("当前应用没有可用的标准控件读取路径")
+            overlay?.showCaptureOnly("当前页面不是可识别的聊天窗口")
             return
         }
         if (raw.messages.isEmpty()) {
             DiagnosticsStore.record(
                 this,
                 packageName = pkg,
-                adapter = if (pkg == WECHAT_PKG) "WeChat A · manual" else adapterLabel(pkg),
+                adapter = adapterLabel(pkg),
                 source = "manual_tree_empty",
                 titlePresent = !isTransientTitle(raw.title),
                 messageCount = 0,
                 latestFrom = null,
                 status = "manual_tree_empty"
             )
-            overlay?.showCaptureOnly(
-                if (pkg == WECHAT_PKG) {
-                    "微信 A 当前未向标准无障碍暴露正文，可用通知/剪贴板或主动本地 OCR"
-                } else {
-                    "当前页面控件不可读，可选剪贴板或本地 OCR"
-                }
-            )
+            overlay?.showCaptureOnly("当前页面控件未暴露消息正文")
             return
         }
 
         DiagnosticsStore.record(
             this,
             packageName = pkg,
-            adapter = if (pkg == WECHAT_PKG) "WeChat A · manual" else adapterLabel(pkg),
+            adapter = adapterLabel(pkg),
             source = "manual_tree",
             titlePresent = !isTransientTitle(raw.title),
             messageCount = raw.messages.size,
@@ -700,19 +697,17 @@ open class ChatCaptureService : AccessibilityService() {
             status = "ok"
         )
 
-        val appScope = if (pkg == WECHAT_PKG) WECHAT_A_SCOPE else pkg
-        val snapshot = stabilizeTitle(appScope, raw)
+        val snapshot = stabilizeTitle(pkg, raw)
         if (!prefs.isAllowed(snapshot.title)) {
             overlay?.toast("当前会话不在白名单")
             return
         }
         cloneUserMode = false
-        activePkg = appScope
+        activePkg = pkg
         foregroundPkg = pkg
         currentSnapshot = snapshot
         lastSignature = snapshot.signature()
         invalidateAnalysis()
-        // invalidateAnalysis clears current async work, not the snapshot itself.
         currentSnapshot = snapshot
         pendingSnapshot = snapshot
         pendingHistoryHint = HistoryCaptureHint.CONSERVATIVE

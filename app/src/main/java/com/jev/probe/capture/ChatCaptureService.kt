@@ -141,7 +141,7 @@ open class ChatCaptureService : AccessibilityService() {
         super.onServiceConnected()
         prefs = Prefs(this)
         overlay = OverlayRuntime.get(this)
-        overlay?.onManualAnalyze = { manualAnalyzeCurrentWindow() }
+        overlay?.setManualAnalyzeHandler(this) { manualAnalyzeCurrentWindow() }
         // Bubble menu: one manual screenshot + OCR, for any app at all.
         overlay?.onOcrCapture = { ocrCaptureManual() }
         // Keep the process at foreground importance so MIUI does not freeze us.
@@ -289,7 +289,7 @@ open class ChatCaptureService : AccessibilityService() {
         val adapter = adapters[pkg] ?: return
         // This adapted source now owns contact actions in the shared overlay.
         overlay?.setSaveContactHandler(this) { saveCurrentAccessibilityContact() }
-        overlay?.onManualAnalyze = { manualAnalyzeCurrentWindow() }
+        overlay?.setManualAnalyzeHandler(this) { manualAnalyzeCurrentWindow() }
         overlay?.onOcrCapture = { ocrCaptureManual() }
         // Only act inside a chat window (the adapter returns null elsewhere).
         val rawSnapshot = adapter.extract(root, resources) ?: return
@@ -1105,7 +1105,7 @@ open class ChatCaptureService : AccessibilityService() {
         main.removeCallbacks(restoreSettleLate)
         // Keep the process-wide overlay alive; only remove callbacks that require
         // this AccessibilityService instance.
-        overlay?.onManualAnalyze = null
+        overlay?.setManualAnalyzeHandler(this, null)
         overlay?.onOcrCapture = null
         overlay?.setSaveContactHandler(this, null)
         overlay = null

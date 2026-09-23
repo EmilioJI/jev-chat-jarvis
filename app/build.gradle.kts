@@ -61,8 +61,8 @@ android {
         debug {
             // Acceptance builds install beside the upstream release instead of
             // requiring an uninstall that would wipe API keys and local history.
-            applicationIdSuffix = ".abprobe"
-            versionNameSuffix = "-wechat-ab-probe"
+            applicationIdSuffix = ".guofeng"
+            versionNameSuffix = "-wechat-exact-probe"
         }
         release {
             isMinifyEnabled = false

@@ -20,7 +20,6 @@ import com.jev.probe.core.RankedReply
 import com.jev.probe.core.kb.ChatContext
 import com.jev.probe.core.kb.ContextBuilder
 import com.jev.probe.core.kb.HistoryCaptureHint
-import com.jev.probe.core.kb.HistoryTime
 import com.jev.probe.core.kb.KbStore
 import com.jev.probe.jev.JevClient
 import com.jev.probe.overlay.OverlayController

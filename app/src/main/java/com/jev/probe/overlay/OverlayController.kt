@@ -633,6 +633,12 @@ class OverlayController(private val ctx: Context) {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = dp(6) }
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                copy(text)
+                if (expanded) toggle()
+            }
         }
         c.addView(TextView(ctx).apply {
             this.text = when {
@@ -648,7 +654,7 @@ class OverlayController(private val ctx: Context) {
             setPadding(0, dp(3), 0, dp(7)); setLineSpacing(dp(2).toFloat(), 1f)
         })
         val btns = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
-        btns.addView(pill("复制回复", true) { copy(text) })
+        btns.addView(pill("复制并收起", true) { copy(text); if (expanded) toggle() })
         c.addView(btns)
         return c
     }

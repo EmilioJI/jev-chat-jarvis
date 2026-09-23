@@ -1206,7 +1206,6 @@ open class ChatCaptureService : AccessibilityService() {
     companion object {
         private const val TAG = "JEVASSIST"
         private const val WECHAT_PKG = "com.tencent.mm"
-        private const val WECHAT_A_SCOPE = "com.tencent.mm@UserHandle{0}"
 
         /** Whole-screen OCR keeps the middle: no action bar, no input area. */
         private const val TOP_CROP = 0.12f

@@ -34,6 +34,12 @@ class ReplyHandoffTest {
     }
 
     @Test
+    fun armedReplyExpiresQuickly() {
+        ReplyHandoff.arm("short lived")
+        assertEquals(null, ReplyHandoff.consumeArmed(System.currentTimeMillis() + 61_000L))
+    }
+
+    @Test
     fun staleRepliesExpire() {
         ReplyHandoff.publish(listOf(RankedReply("old", 1.0)))
         assertTrue(ReplyHandoff.current(Long.MAX_VALUE).isEmpty())

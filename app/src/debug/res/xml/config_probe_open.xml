@@ -6,5 +6,5 @@
     android:canTakeScreenshot="true"
     android:notificationTimeout="100"
     android:isAccessibilityTool="true"
-    android:intro="@string/a11y_intro"
-    android:description="@string/a11y_desc" />
+    android:intro="@string/a11y_intro_probe_legacy"
+    android:description="@string/a11y_desc_probe_legacy" />

@@ -231,6 +231,16 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
         get() = sp.getBoolean(K_AUTO, false)
         set(v) = sp.edit().putBoolean(K_AUTO, v).apply()
 
+    /**
+     * Low-risk WeChat convenience mode: notification text may be analyzed
+     * automatically after the user has granted Android notification access.
+     * Default false; with it off, a fresh notification merely arms the bubble
+     * for one-tap analysis.
+     */
+    var wechatNotificationAutoAnalyze: Boolean
+        get() = sp.getBoolean(K_WECHAT_NOTIFICATION_AUTO, false)
+        set(v) = sp.edit().putBoolean(K_WECHAT_NOTIFICATION_AUTO, v).apply()
+
     // ------------------------------------------------------------- helpers
 
     private fun readSecret(plainKey: String, encryptedKey: String): String =
@@ -341,6 +351,7 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
         private const val K_BUBBLE_Y = "bubble_y"
         private const val K_BUBBLE_X = "bubble_x"
         private const val K_AUTO = "auto_analyze"
+        private const val K_WECHAT_NOTIFICATION_AUTO = "wechat_notification_auto_analyze"
 
         const val PROVIDER_OPENROUTER = "openrouter"
         const val PROVIDER_TYPESAFE = "typesafe"

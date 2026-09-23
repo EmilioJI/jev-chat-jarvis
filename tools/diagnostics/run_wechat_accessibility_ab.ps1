@@ -74,6 +74,13 @@ if ($focus -notmatch "com.tencent.mm") {
 
 $rows = New-Object System.Collections.Generic.List[object]
 
+$originalServices = ((adb -s $Serial shell settings get secure enabled_accessibility_services) -join "").Trim()
+$originalEnabled = ((adb -s $Serial shell settings get secure accessibility_enabled) -join "").Trim()
+if ($originalEnabled -notmatch "^[01]$") {
+    $originalEnabled = "0"
+}
+
+try {
 foreach ($profile in $Profiles) {
     Write-Host ("Testing " + $profile.Name + " ...")
 
@@ -115,9 +122,16 @@ foreach ($profile in $Profiles) {
     }
     $rows.Add($row)
 }
-
-Invoke-Adb shell settings delete secure enabled_accessibility_services | Out-Null
-Invoke-Adb shell settings put secure accessibility_enabled 0 | Out-Null
+}
+finally {
+    if ([string]::IsNullOrWhiteSpace($originalServices) -or $originalServices -eq "null") {
+        Invoke-Adb shell settings delete secure enabled_accessibility_services | Out-Null
+    } else {
+        Invoke-Adb shell settings put secure enabled_accessibility_services $originalServices | Out-Null
+    }
+    Invoke-Adb shell settings put secure accessibility_enabled $originalEnabled | Out-Null
+    Start-Sleep -Milliseconds 500
+}
 
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $outPath = Join-Path (Get-Location) ("wechat_accessibility_ab_" + $stamp + ".csv")

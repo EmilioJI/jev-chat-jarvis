@@ -15,7 +15,7 @@ import org.json.JSONObject
  * ranking question over already-drafted candidates. Reads judgeProvider /
  * judgeBaseUrl / judgeKey / judgeModel from [Prefs]; nothing generative here.
  */
-class JudgeClient(private val prefs: Prefs) {
+class JudgeClient(private val prefs: Prefs) : JudgeEngine {
 
     /**
      * The 7 judgment questions (fast, ~1s). Errors are returned, not thrown.
@@ -23,7 +23,7 @@ class JudgeClient(private val prefs: Prefs) {
      * @param ctx D-stage knowledge context; null or empty means the request body
      *        is byte-for-byte what v1.2 sent.
      */
-    fun judge(snapshot: ChatSnapshot, relationship: String, ctx: ChatContext? = null): Analysis {
+    override fun judge(snapshot: ChatSnapshot, relationship: String, ctx: ChatContext?): Analysis {
         val start = System.currentTimeMillis()
         return try {
             val answers = postDecisions(
@@ -53,11 +53,11 @@ class JudgeClient(private val prefs: Prefs) {
     }
 
     /** Ask Jev which of the candidate replies is best; throws on failure. */
-    fun rank(
+    override fun rank(
         snapshot: ChatSnapshot,
         relationship: String,
         candidates: List<String>,
-        ctx: ChatContext? = null
+        ctx: ChatContext?
     ): List<RankedReply> {
         val questions = JSONObject().put("best_reply",
             JevQuestions.rankQuestion(candidates).getJSONObject("best_reply"))
@@ -80,7 +80,7 @@ class JudgeClient(private val prefs: Prefs) {
         ctx: ChatContext?,
         questions: JSONObject
     ): JSONObject {
-        val background = ctx?.background(relationship) ?: ""
+        val background = ctx?.background() ?: ""
         val history = ctx?.history ?: emptyList()
         val enriched = background.isNotBlank() || history.isNotEmpty()
         return try {

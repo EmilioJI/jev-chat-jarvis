@@ -97,19 +97,20 @@ Fix:
 
 ## P1 — required before treating this fork as a production app
 
-### Secure API-key storage
+### Secure API-key storage — RESOLVED IN CODE / DEVICE GATE PENDING
 
-Current API keys are stored in app-private `SharedPreferences`. This prevents ordinary cross-app reads but is not encrypted-at-rest key storage.
+Judge / reply / vision API keys now use an AndroidKeyStore-backed AES-256-GCM store:
 
-Recommended migration:
+- the AES key remains inside AndroidKeyStore
+- SharedPreferences stores only versioned IV + ciphertext
+- v1.3 plaintext keys migrate with decrypt-back verification
+- migration is two-phase: ciphertext commit succeeds before plaintext deletion is attempted
+- failed cleanup leaves both copies and retries later; failed encryption preserves the working plaintext fallback rather than losing the credential
+- the obsolete v1.2 `openrouter_key` duplicate is removed after the v1.3 judge slot is readable
+- deprecated `EncryptedSharedPreferences` / `MasterKey` APIs are not used
+- settings connectivity-test scratch preferences are cleared on success, failure and early validation exits
 
-1. add an Android Keystore-backed secret store
-2. encrypt judge/reply/vision keys
-3. migrate legacy plaintext only after decrypt-back validation
-4. preserve a recovery path if a Keystore key becomes invalid
-5. never delete a legacy value until migration is verified
-
-Do not use deprecated `EncryptedSharedPreferences` as the long-term architecture.
+Android compilation is gated in CI. Final status remains **runtime-pending** until the migration is exercised on a real Android device.
 
 ### Google Play AccessibilityService compliance
 
@@ -127,27 +128,38 @@ The product is a general chat assistant, not primarily a disability-access tool.
 
 This is deliberately not changed in this pass because it can alter platform/WeChat behavior and requires a distribution decision.
 
-### Android 16 / target API 36
+### Android 16 / target API 36 — RESOLVED IN BUILD GATE
 
-Current build:
+The fork now builds against Android 16 with a pinned toolchain:
 
-- `compileSdk = 35`
-- `targetSdk = 35`
+- `compileSdk = 36`
+- `targetSdk = 36`
+- AGP `8.10.1`
+- Gradle Wrapper `8.11.1`
+- JDK 17
+- Build Tools `35.0.0`
 
-For Google Play submissions after 2026-08-31, new apps and app updates must target API 36. Upgrade as a tested build-chain migration, not as a one-line edit: AGP, Gradle, compileSdk, targetSdk, foreground-service behavior, notification behavior and accessibility behavior all need verification.
+Run #20 completed `:app:assembleDebug` successfully and the APK badging gate asserted both `targetSdkVersion='36'` and `compileSdkVersion='36'`.
 
-### Persistent chat-history ambiguity
+The migration also fixed a pre-existing cross-platform Gradle issue: the legacy Windows release-signing fallback `H:/android/keys/jev-release.properties` is now evaluated only on Windows; Linux/CI uses only an explicit `JEV_KEYSTORE_PROPS`.
 
-`KbStore.appendLog()` treats a visible screen with zero overlap against the previous recorded screen as “scrolled into old history” and skips it.
+Runtime compatibility on Android 16 still belongs to the real-device gate, especially AccessibilityService / screenshot / overlay behavior.
 
-That is safe against duplicate history, but after a long absence an entirely new visible screen can also have zero overlap. This can cause genuine new messages to be skipped.
+### Persistent chat-history ambiguity — RESOLVED
 
-Recommended fix:
+History recording now receives an explicit `HistoryCaptureHint`:
 
-- pass a capture reason / direction hint into history recording
-- incoming-message analysis may append a no-overlap screen as new
-- manual historical scrolling should remain non-appending
-- add deterministic sequence tests before changing this logic
+- `CONSERVATIVE` for manual analysis, scrolling, window changes and service restore
+- `NEWEST_SCREEN` only for automatic analysis caused by a real `TYPE_WINDOW_CONTENT_CHANGED` event
+
+A zero-overlap screen is appended only with `NEWEST_SCREEN`; conservative reads still skip it. In addition, `TYPE_VIEW_SCROLLED`, window changes and service restore no longer trigger automatic model analysis.
+
+`KbSelfCheck` now covers the sequence:
+
+- zero overlap + conservative → no append
+- zero overlap + newest → append
+- subsequent one-line overlap → append only the new tail
+- final order must be exactly A/B/C/D/E
 
 ### Dead / incomplete configuration paths
 

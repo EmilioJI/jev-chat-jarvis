@@ -2,25 +2,42 @@ package com.jev.probe.core
 
 import android.content.Context
 import android.util.Log
+import java.net.URI
 
 /**
  * App-private config store. Holds the three API routes (judge / reply / vision),
  * the relationship description used in Jev's state, the conversation whitelist,
  * plus the context (D stage) and OCR (B stage) switches.
  *
- * Key handling: stored in app-private SharedPreferences (not world-readable,
- * never logged, never in code/git). Only key *lengths* are ever logged.
+ * Key handling: real API credentials are AES-GCM encrypted with a key held by
+ * AndroidKeyStore; only ciphertext is stored in SharedPreferences after a
+ * verified migration. Scratch/self-check prefs remain isolated and short-lived.
+ * Key material and plaintext are never logged or stored in code/git.
  */
 class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
 
     private val sp = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+    private val secureSecrets =
+        if (prefsName == PREFS_MAIN) SecureSecretStore(context, sp) else null
 
     /**
      * Only the real config migrates — and only the real config logs it. The
      * throwaway instances behind the settings test buttons and the KB self-check
      * have nothing to carry over, and used to print one migration line per tap.
      */
-    init { if (prefsName == PREFS_MAIN) migrateIfNeeded() }
+    init {
+        if (prefsName == PREFS_MAIN) {
+            migrateIfNeeded()
+            applySafetyDefaultsIfNeeded()
+            // Proactively migrate any v1.3 plaintext route keys.
+            val migratedJudge = judgeKey
+            replyKey
+            visionKey
+            // v1.2's original key had a different preference name. Once the
+            // v1.3 judge slot is readable, the obsolete duplicate is unnecessary.
+            if (migratedJudge.isNotBlank()) sp.edit().remove(K_LEGACY_KEY).apply()
+        }
+    }
 
     /**
      * v1.2 -> v1.3: the single `openrouter_key` becomes the judge route's key.
@@ -40,9 +57,25 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
         e.apply()
     }
 
+    /**
+     * Security-architecture migration: background auto-analysis and automatic OCR
+     * are opt-in from this version onward. This runs once for existing installs
+     * as well, so an older preference cannot silently keep passive capture alive.
+     */
+    private fun applySafetyDefaultsIfNeeded() {
+        if (sp.getBoolean(K_SAFETY_MIGRATED, false)) return
+        sp.edit()
+            .putBoolean(K_SAFETY_MIGRATED, true)
+            .putBoolean(K_AUTO, false)
+            .putBoolean(K_OCR_FALLBACK, false)
+            .putBoolean(K_OCR_AUTO, false)
+            .apply()
+        Log.i(TAG, "prefs migrated to active-mode safety defaults")
+    }
+
     // ---------------------------------------------------------------- judge
 
-    /** "openrouter" | "typesafe" | "custom". */
+    /** "openrouter" | "typesafe" | "glm47" | "custom". */
     var judgeProvider: String
         get() = sp.getString(K_JUDGE_PROVIDER, PROVIDER_OPENROUTER) ?: PROVIDER_OPENROUTER
         set(v) = sp.edit().putString(K_JUDGE_PROVIDER, v.trim()).apply()
@@ -53,8 +86,8 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
         set(v) = sp.edit().putString(K_JUDGE_BASE, v.trim()).apply()
 
     var judgeKey: String
-        get() = sp.getString(K_JUDGE_KEY, "") ?: ""
-        set(v) = sp.edit().putString(K_JUDGE_KEY, v.trim()).apply()
+        get() = readSecret(K_JUDGE_KEY, K_JUDGE_KEY_ENC)
+        set(v) = writeSecret(K_JUDGE_KEY, K_JUDGE_KEY_ENC, v.trim())
 
     var judgeModel: String
         get() = sp.getString(K_JUDGE_MODEL, DEFAULT_JUDGE_MODEL_OPENROUTER) ?: DEFAULT_JUDGE_MODEL_OPENROUTER
@@ -74,8 +107,8 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
 
     /** Blank = fall back to [judgeKey]. */
     var replyKey: String
-        get() = sp.getString(K_REPLY_KEY, "") ?: ""
-        set(v) = sp.edit().putString(K_REPLY_KEY, v.trim()).apply()
+        get() = readSecret(K_REPLY_KEY, K_REPLY_KEY_ENC)
+        set(v) = writeSecret(K_REPLY_KEY, K_REPLY_KEY_ENC, v.trim())
 
     /** Generative model for drafting the 3 candidate replies. */
     var replyModel: String
@@ -95,8 +128,8 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
 
     /** Blank = fall back to [replyKey] then [judgeKey]. */
     var visionKey: String
-        get() = sp.getString(K_VISION_KEY, "") ?: ""
-        set(v) = sp.edit().putString(K_VISION_KEY, v.trim()).apply()
+        get() = readSecret(K_VISION_KEY, K_VISION_KEY_ENC)
+        set(v) = writeSecret(K_VISION_KEY, K_VISION_KEY_ENC, v.trim())
 
     var visionModel: String
         get() = sp.getString(K_VISION_MODEL, DEFAULT_VISION_MODEL) ?: DEFAULT_VISION_MODEL
@@ -118,9 +151,12 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
         get() = sp.getInt(K_CTX_COUNT, 30)
         set(v) = sp.edit().putInt(K_CTX_COUNT, v).apply()
 
-    /** Auto-summarize a contact once enough history accumulates. */
+    /**
+     * Auto-summarize a known contact after enough recorded history accumulates.
+     * Default OFF because enabling it sends stored history to the reply model.
+     */
     var autoSummary: Boolean
-        get() = sp.getBoolean(K_AUTO_SUMMARY, true)
+        get() = sp.getBoolean(K_AUTO_SUMMARY, false)
         set(v) = sp.edit().putBoolean(K_AUTO_SUMMARY, v).apply()
 
     // ------------------------------------------------------------ OCR (B)
@@ -137,7 +173,7 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
 
     /** Fall back to OCR when an adapted app's node tree comes back empty. */
     var ocrFallback: Boolean
-        get() = sp.getBoolean(K_OCR_FALLBACK, true)
+        get() = sp.getBoolean(K_OCR_FALLBACK, false)
         set(v) = sp.edit().putBoolean(K_OCR_FALLBACK, v).apply()
 
     /** Auto-analyze in OCR mode (default off: OCR costs a screenshot each time). */
@@ -147,9 +183,19 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
 
     // ------------------------------------------------------------- existing
 
-    /** Free-text describing who the other person is; goes into Jev's state. */
+    /**
+     * Optional global fallback relationship. Per-contact relationship from the
+     * knowledge base takes priority at analysis time. Empty means unknown.
+     *
+     * Older acceptance builds persisted a partner-specific demo default. Treat
+     * that exact legacy value as unset so upgrades do not misclassify unrelated
+     * contacts as a partner conversation.
+     */
     var relationship: String
-        get() = sp.getString(K_REL, DEFAULT_REL) ?: DEFAULT_REL
+        get() {
+            val raw = sp.getString(K_REL, DEFAULT_REL) ?: DEFAULT_REL
+            return if (raw.trim() == LEGACY_DEFAULT_REL) DEFAULT_REL else raw
+        }
         set(v) = sp.edit().putString(K_REL, v).apply()
 
     /** Master on/off for showing the overlay + running analysis. */
@@ -182,23 +228,79 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
 
     /** Auto-analyze on every incoming message; if false, user taps to analyze. */
     var autoAnalyze: Boolean
-        get() = sp.getBoolean(K_AUTO, true)
+        get() = sp.getBoolean(K_AUTO, false)
         set(v) = sp.edit().putBoolean(K_AUTO, v).apply()
+
+    /**
+     * Low-risk WeChat convenience mode: notification text may be analyzed
+     * automatically after the user has granted Android notification access.
+     * Default false; with it off, a fresh notification merely arms the bubble
+     * for one-tap analysis.
+     */
+    var wechatNotificationAutoAnalyze: Boolean
+        get() = sp.getBoolean(K_WECHAT_NOTIFICATION_AUTO, false)
+        set(v) = sp.edit().putBoolean(K_WECHAT_NOTIFICATION_AUTO, v).apply()
+
+    /**
+     * Convenience-only output optimization. When enabled, the top ranked reply
+     * from a notification-triggered analysis is copied to the system clipboard.
+     * It never touches the chat input box and never sends.
+     */
+    var wechatAutoCopyTopReply: Boolean
+        get() = sp.getBoolean(K_WECHAT_AUTO_COPY_TOP, false)
+        set(v) = sp.edit().putBoolean(K_WECHAT_AUTO_COPY_TOP, v).apply()
 
     // ------------------------------------------------------------- helpers
 
-    /** Reply route key, falling back to the judge key. */
-    fun effectiveReplyKey(): String = replyKey.ifBlank { judgeKey }
+    private fun readSecret(plainKey: String, encryptedKey: String): String =
+        secureSecrets?.readOrMigrate(encryptedKey, plainKey)
+            ?: (sp.getString(plainKey, "") ?: "")
 
-    /** Vision route key, falling back to reply then judge. */
-    fun effectiveVisionKey(): String = visionKey.ifBlank { effectiveReplyKey() }
+    private fun writeSecret(plainKey: String, encryptedKey: String, value: String) {
+        val secure = secureSecrets
+        if (secure != null) secure.write(encryptedKey, plainKey, value)
+        else sp.edit().putString(plainKey, value).apply()
+    }
 
-    /** Full POST URL for the Jev decisions call, per provider. */
+    /**
+     * Reply key. A blank key inherits the judge key only when both routes point
+     * at the same host. Never send one provider's credential to another host.
+     */
+    fun effectiveReplyKey(): String {
+        if (replyKey.isNotBlank()) return replyKey
+        return if (sameCredentialHost(replyBaseUrl, judgeBaseUrl)) judgeKey else ""
+    }
+
+    /**
+     * Vision key with the same host-bound inheritance rule. Prefer an explicit
+     * vision key, then a same-host reply credential, then a same-host judge key.
+     */
+    fun effectiveVisionKey(): String {
+        if (visionKey.isNotBlank()) return visionKey
+        val replyEffective = effectiveReplyKey()
+        if (replyEffective.isNotBlank() && sameCredentialHost(visionBaseUrl, replyBaseUrl))
+            return replyEffective
+        if (judgeKey.isNotBlank() && sameCredentialHost(visionBaseUrl, judgeBaseUrl))
+            return judgeKey
+        return ""
+    }
+
+    private fun sameCredentialHost(a: String, b: String): Boolean {
+        fun host(s: String): String? = runCatching {
+            URI(s.trim()).host?.lowercase()
+        }.getOrNull()
+        val ha = host(a)
+        val hb = host(b)
+        return ha != null && hb != null && ha == hb
+    }
+
+    /** Full POST URL for the selected judgment engine. */
     fun judgeEndpoint(): String {
         val base = judgeBaseUrl.trim().trimEnd('/')
         return when (judgeProvider) {
             PROVIDER_TYPESAFE -> "$base/v1/systemone"
-            PROVIDER_CUSTOM -> judgeBaseUrl.trim()   // user supplies the full URL
+            PROVIDER_GLM47 -> "$base/chat/completions"
+            PROVIDER_CUSTOM -> judgeBaseUrl.trim()   // legacy custom Jev endpoint
             else -> "$base/alpha/decisions"
         }
     }
@@ -230,15 +332,19 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
 
         private const val K_LEGACY_KEY = "openrouter_key"
         private const val K_MIGRATED_V13 = "prefs_migrated_v13"
+        private const val K_SAFETY_MIGRATED = "prefs_safety_active_mode_v1"
         private const val K_JUDGE_PROVIDER = "judge_provider"
         private const val K_JUDGE_BASE = "judge_base_url"
         private const val K_JUDGE_KEY = "judge_key"
+        private const val K_JUDGE_KEY_ENC = "judge_key_enc_v1"
         private const val K_JUDGE_MODEL = "judge_model"
         private const val K_REPLY_BASE = "reply_base_url"
         private const val K_REPLY_KEY = "reply_key"
+        private const val K_REPLY_KEY_ENC = "reply_key_enc_v1"
         private const val K_REPLY_MODEL = "reply_model"
         private const val K_VISION_BASE = "vision_base_url"
         private const val K_VISION_KEY = "vision_key"
+        private const val K_VISION_KEY_ENC = "vision_key_enc_v1"
         private const val K_VISION_MODEL = "vision_model"
         private const val K_CTX_ENABLED = "context_enabled"
         private const val K_CTX_COUNT = "context_history_count"
@@ -254,25 +360,36 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
         private const val K_BUBBLE_Y = "bubble_y"
         private const val K_BUBBLE_X = "bubble_x"
         private const val K_AUTO = "auto_analyze"
+        private const val K_WECHAT_NOTIFICATION_AUTO = "wechat_notification_auto_analyze"
+        private const val K_WECHAT_AUTO_COPY_TOP = "wechat_auto_copy_top_reply"
 
         const val PROVIDER_OPENROUTER = "openrouter"
         const val PROVIDER_TYPESAFE = "typesafe"
+        const val PROVIDER_GLM47 = "glm47"
         const val PROVIDER_CUSTOM = "custom"
 
         const val OCR_MLKIT = "mlkit"
         const val OCR_VISION = "vision"
+
+        // Zhipu OpenAI-compatible endpoint. Judgment stays on the calibrated
+        // GLM-4.7 path; reply generation uses the lower-latency GLM-5.3-Flash.
+        const val GLM_BASE = "https://open.bigmodel.cn/api/paas/v4"
+        const val GLM_JUDGE_MODEL = "glm-4.7"
+        const val GLM_MODEL = "glm-5.3-flash"
 
         // Judge route presets.
         const val DEFAULT_JUDGE_BASE_OPENROUTER = "https://openrouter.ai/api"
         const val DEFAULT_JUDGE_MODEL_OPENROUTER = "typesafe/jev-1.13"
         const val DEFAULT_JUDGE_BASE_TYPESAFE = "https://api.typesafe.ai"
         const val DEFAULT_JUDGE_MODEL_TYPESAFE = "jev-latest"
+        const val DEFAULT_JUDGE_BASE_GLM47 = GLM_BASE
+        const val DEFAULT_JUDGE_MODEL_GLM47 = GLM_JUDGE_MODEL
 
         // Reply route presets (OpenAI-compatible chat completions).
         const val DEFAULT_REPLY_BASE = "https://openrouter.ai/api/v1"
         const val DEFAULT_REPLY_MODEL = "deepseek/deepseek-chat-v3.1"
         const val DEEPSEEK_BASE = "https://api.deepseek.com/v1"
-        const val DEEPSEEK_MODEL = "deepseek-chat"
+        const val DEEPSEEK_MODEL = "deepseek-flash"
         const val DASHSCOPE_BASE = "https://dashscope.aliyuncs.com/compatible-mode/v1"
         const val DASHSCOPE_MODEL = "qwen-plus"
 
@@ -281,6 +398,8 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
         const val DEFAULT_VISION_MODEL = "qwen/qwen2.5-vl-72b-instruct"
         const val DASHSCOPE_VISION_MODEL = "qwen-vl-max"
 
-        const val DEFAULT_REL = "对方是我的伴侣；from=me 的是我发的，from=other 的是对方发的"
+        private const val LEGACY_DEFAULT_REL =
+            "对方是我的伴侣；from=me 的是我发的，from=other 的是对方发的"
+        const val DEFAULT_REL = ""
     }
 }

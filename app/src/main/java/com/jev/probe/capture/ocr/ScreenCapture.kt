@@ -62,8 +62,18 @@ class ScreenCapture(
 
     private val main = Handler(Looper.getMainLooper())
 
-    /** Take one screenshot. [onResult] runs on the main thread, exactly once. */
-    fun capture(onResult: (Result) -> Unit) {
+    /** Take one screenshot, preferring an active-window shot when available. */
+    fun capture(onResult: (Result) -> Unit) = captureInternal(preferWindow = true, onResult)
+
+    /**
+     * User-initiated whole-display screenshot. This path deliberately avoids
+     * rootInActiveWindow / window-node inspection, which keeps WeChat local OCR
+     * independent of the app's Accessibility tree.
+     */
+    fun captureDisplay(onResult: (Result) -> Unit) =
+        captureInternal(preferWindow = false, onResult)
+
+    private fun captureInternal(preferWindow: Boolean, onResult: (Result) -> Unit) {
         val now = SystemClock.elapsedRealtime()
         val need = requiredInterval()
         if (now - lastAttemptAt < need) {
@@ -84,10 +94,10 @@ class ScreenCapture(
 
         // Hide the bubble, give the compositor a frame to drop it, then shoot.
         runCatching { hideOverlay() }
-        main.postDelayed({ shoot(finish, done) }, HIDE_SETTLE_MS)
+        main.postDelayed({ shoot(finish, done, preferWindow) }, HIDE_SETTLE_MS)
     }
 
-    private fun shoot(finish: (Result) -> Unit, done: AtomicBoolean) {
+    private fun shoot(finish: (Result) -> Unit, done: AtomicBoolean, preferWindow: Boolean) {
         val exec = service.mainExecutor
         // Which area the picture will cover. Set just before the window shot is
         // issued and read inside the callback, so the mapping always matches the
@@ -114,7 +124,7 @@ class ScreenCapture(
         // API 34+: shooting just the active window is cheaper and is allowed on
         // some OEM builds that refuse a whole-display capture. Fall back to the
         // display shot when the window id is unknown or the call is unavailable.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        if (preferWindow && Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             val node = runCatching { service.rootInActiveWindow }.getOrNull()
             val windowId = node?.windowId
             if (windowId != null && windowId != -1) {

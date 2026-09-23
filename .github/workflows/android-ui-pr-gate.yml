@@ -1,0 +1,104 @@
+name: Android UI PR Gate
+
+on:
+  pull_request:
+    branches:
+      - feature/hardening-v1
+    paths:
+      - "app/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - "gradle/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-ui-pr-gate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify pinned toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          java -version
+          test -f gradle/wrapper/gradle-wrapper.jar
+          test -f gradle/wrapper/gradle-wrapper.properties
+          test -f gradlew
+          bash ./gradlew --version
+          test -n "${ANDROID_HOME:-}"
+          test -f "$ANDROID_HOME/platforms/android-36/android.jar"
+          test -x "$ANDROID_HOME/build-tools/35.0.0/aapt"
+
+      - name: WeChat safety architecture guard
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test ! -e app/src/main/java/com/google/android/accessibility/selecttospeak/SelectToSpeakService.kt
+          test ! -e app/src/main/res/xml/config_disguised.xml
+
+          grep -F 'android:name=".capture.ChatCaptureService"' app/src/main/AndroidManifest.xml
+          grep -F 'android:isAccessibilityTool="false"' app/src/main/res/xml/config_accessibility.xml
+
+          if grep -F 'com.tencent.mm' app/src/main/res/xml/config_accessibility.xml; then
+            echo "WeChat must not be subscribed through AccessibilityService packageNames" >&2
+            exit 1
+          fi
+
+          BANNED='SelectToSpeakService|ManualWeChatVisibleText|class WeChatAdapter|com\.tencent\.mm:id/|ACTION_SET_TEXT|ACTION_PASTE|ACTION_CLICK|dispatchGesture|Xposed|LSPosed|Frida|Magisk'
+          if grep -R -n -E "$BANNED" app/src/main/java app/src/main/res/xml; then
+            echo "Banned WeChat-evasion/UI-automation mechanism found" >&2
+            exit 1
+          fi
+
+          IME_READ_BANNED='getTextBeforeCursor|getTextAfterCursor|getSelectedText|getExtractedText|performEditorAction|sendKeyEvent|deleteSurroundingText'
+          if grep -R -n -E "$IME_READ_BANNED" app/src/main/java/com/jev/probe/ime; then
+            echo "Zhiyan IME must remain write-only and must never trigger editor actions" >&2
+            exit 1
+          fi
+
+      - name: Unit tests and debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          sha256sum "$APK"
+
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          test -x "$AAPT"
+          BADGING="$("$AAPT" dump badging "$APK")"
+          printf '%s\n' "$BADGING" | grep -F "package: name='com.jev.probe.guofeng'"
+          printf '%s\n' "$BADGING" | grep -F "application-label:'小书童·知言'"
+          printf '%s\n' "$BADGING" | grep -F "targetSdkVersion:'36'"
+          printf '%s\n' "$BADGING" | grep -F "compileSdkVersion='36'"
+
+      # GitHub-hosted debug signing is ephemeral, so this artifact is CI-only
+      # and must not be used as an in-place update over a previously installed
+      # acceptance build. Upload only for an explicit manual acceptance run.
+      - name: Upload manual acceptance APK
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: jev-ci-debug-${{ github.sha }}
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 1

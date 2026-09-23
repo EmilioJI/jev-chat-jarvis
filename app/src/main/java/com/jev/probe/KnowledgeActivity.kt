@@ -1,8 +1,5 @@
 package com.jev.probe
 
-import android.graphics.Color
-import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.InputType
 import android.util.TypedValue
@@ -19,6 +16,8 @@ import androidx.appcompat.app.AppCompatActivity
 import com.jev.probe.core.kb.Contact
 import com.jev.probe.core.kb.KbStore
 import com.jev.probe.core.kb.Note
+import com.jev.probe.ui.Guofeng
+import com.jev.probe.ui.InkPaperDrawable
 import kotlin.math.roundToInt
 
 /**
@@ -37,11 +36,11 @@ class KnowledgeActivity : AppCompatActivity() {
     /** 0 = notes, 1 = contacts. */
     private var tab = 0
 
-    private val accent = Color.parseColor("#3A7AFE")
-    private val ink = Color.parseColor("#111827")
-    private val sub = Color.parseColor("#6B7280")
-    private val pillOff = Color.parseColor("#EEF1F5")
-    private val red = Color.parseColor("#DC2626")
+    private val accent = Guofeng.JADE
+    private val ink = Guofeng.INK
+    private val sub = Guofeng.INK_SOFT
+    private val pillOff = Guofeng.GOLD_SOFT
+    private val red = Guofeng.CINNABAR
 
     private fun dp(v: Int) = TypedValue.applyDimension(
         TypedValue.COMPLEX_UNIT_DIP, v.toFloat(), resources.displayMetrics).roundToInt()
@@ -49,9 +48,12 @@ class KnowledgeActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         store = KbStore.get(this)
-        window.decorView.setBackgroundColor(Color.parseColor("#F2F3F5"))
+        Guofeng.applyWindow(this)
 
-        val scroll = ScrollView(this)
+        val scroll = ScrollView(this).apply {
+            isVerticalScrollBarEnabled = false
+            background = InkPaperDrawable()
+        }
         container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(18), dp(22), dp(18), dp(28))
@@ -66,9 +68,11 @@ class KnowledgeActivity : AppCompatActivity() {
 
     private fun render() {
         container.removeAllViews()
-        container.addView(text("知识库与联系人", 24f, ink, bold = true))
-        container.addView(text("只存在本机，不上传。分析时按会话标题匹配联系人、按关键词命中笔记。",
-            12f, sub).apply { setPadding(0, dp(6), 0, dp(4)) })
+        container.addView(text("知识库与联系人", 27f, Guofeng.JADE_DEEP, bold = true, serif = true))
+        container.addView(text("一册知人，一册记事 · 数据只留在本机",
+            12.5f, Guofeng.GOLD).apply { setPadding(0, dp(4), 0, dp(2)) })
+        container.addView(text("分析时按会话标题匹配联系人，并按关键词带入相关笔记。",
+            11.5f, sub).apply { setPadding(0, dp(2), 0, dp(4)) })
         container.addView(tabs())
         if (tab == 0) renderNotes() else renderContacts()
     }
@@ -87,9 +91,9 @@ class KnowledgeActivity : AppCompatActivity() {
                 layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = dp(8) }
-                setTextColor(if (i == tab) Color.WHITE else sub)
-                setTypeface(typeface, if (i == tab) Typeface.BOLD else Typeface.NORMAL)
-                background = round(dp(9), if (i == tab) accent else pillOff)
+                setTextColor(if (i == tab) Guofeng.CARD else Guofeng.GOLD)
+                typeface = Guofeng.serif(i == tab)
+                background = round(12, if (i == tab) Guofeng.JADE_DEEP else pillOff)
                 setOnClickListener { tab = i; render() }
             }
             row.addView(pill)
@@ -122,7 +126,7 @@ class KnowledgeActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
         val head = n.title.ifBlank { "（无标题）" } + if (n.alwaysOn) "  · 常驻" else ""
-        left.addView(text(head, 15f, ink, bold = true))
+        left.addView(text(head, 15f, ink, bold = true, serif = true))
         left.addView(text(
             if (n.tags.isEmpty()) "无标签" else "标签：" + n.tags.joinToString("、"),
             12f, sub).apply { setPadding(0, dp(3), 0, 0) })
@@ -233,7 +237,7 @@ class KnowledgeActivity : AppCompatActivity() {
 
     private fun contactRow(c0: Contact): View {
         val c = card()
-        c.addView(text(c0.name.ifBlank { "（无名）" }, 15f, ink, bold = true))
+        c.addView(text(c0.name.ifBlank { "（无名）" }, 15f, ink, bold = true, serif = true))
         if (c0.aliases.isNotEmpty())
             c.addView(text("别名：" + c0.aliases.joinToString("、"), 12f, sub)
                 .apply { setPadding(0, dp(3), 0, 0) })
@@ -246,16 +250,27 @@ class KnowledgeActivity : AppCompatActivity() {
         if (c0.notes.isNotBlank())
             c.addView(text("备注：" + c0.notes.replace("\n", " ").take(40), 12f, sub)
                 .apply { setPadding(0, dp(3), 0, 0) })
+        if (c0.autoSummary.isNotBlank())
+            c.addView(text("摘要：" + c0.autoSummary.replace("\n", " ").take(70), 12f, Guofeng.GOLD)
+                .apply { setPadding(0, dp(3), 0, 0) })
 
         val logN = store.logSize(c0.id)
+        val hasSummary = c0.autoSummary.isNotBlank()
         val clear = TextView(this).apply {
-            text = "清空此人历史（$logN 条）"
-            textSize = 12.5f; setTextColor(red); setTypeface(typeface, Typeface.BOLD)
+            text = "清空此人历史与摘要（$logN 条）"
+            textSize = 12.5f; setTextColor(red); typeface = Guofeng.sans(true)
             setPadding(0, dp(10), 0, dp(2))
             setOnClickListener {
-                if (logN == 0) { toast("本来就没有历史"); return@setOnClickListener }
-                confirm("清空历史", "删掉「${c0.name}」的 $logN 条聊天历史？联系人档案保留。") {
-                    store.clearLog(c0.id); render()
+                if (logN == 0 && !hasSummary) {
+                    toast("本来就没有历史或摘要")
+                    return@setOnClickListener
+                }
+                confirm(
+                    "清空历史与摘要",
+                    "删掉「${c0.name}」的 $logN 条聊天历史及其派生摘要？联系人档案保留。"
+                ) {
+                    store.clearLog(c0.id)
+                    render()
                 }
             }
         }
@@ -301,7 +316,8 @@ class KnowledgeActivity : AppCompatActivity() {
                     apps = existing?.apps ?: emptyList(),
                     relationship = relEdit.text.toString().trim(),
                     notes = notesEdit.text.toString().trim(),
-                    autoSummary = existing?.autoSummary ?: ""
+                    autoSummary = existing?.autoSummary ?: "",
+                    autoSummaryThroughTs = existing?.autoSummaryThroughTs ?: 0L
                 ))
                 render()
             }
@@ -353,9 +369,9 @@ class KnowledgeActivity : AppCompatActivity() {
 
     private fun wideBtn(labelText: String, primary: Boolean, onClick: () -> Unit) = TextView(this).apply {
         text = labelText; textSize = 14f; gravity = Gravity.CENTER
-        setTypeface(typeface, Typeface.BOLD)
-        setTextColor(if (primary) Color.WHITE else accent)
-        background = round(dp(11), if (primary) accent else Color.WHITE, stroke = !primary)
+        typeface = Guofeng.serif(true)
+        setTextColor(if (primary) Guofeng.CARD else Guofeng.JADE_DEEP)
+        background = round(13, if (primary) Guofeng.JADE_DEEP else Guofeng.CARD, stroke = !primary)
         setPadding(dp(12), dp(11), dp(12), dp(11))
         layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             .apply { rightMargin = dp(8) }
@@ -364,9 +380,9 @@ class KnowledgeActivity : AppCompatActivity() {
 
     private fun smallToggle(on: Boolean, onClick: () -> Unit) = TextView(this).apply {
         text = if (on) "开" else "关"; textSize = 13f; gravity = Gravity.CENTER
-        setTypeface(typeface, Typeface.BOLD)
-        setTextColor(if (on) Color.WHITE else sub)
-        background = round(dp(10), if (on) accent else Color.parseColor("#E5E7EB"))
+        typeface = Guofeng.sans(true)
+        setTextColor(if (on) Guofeng.CARD else sub)
+        background = round(12, if (on) Guofeng.JADE else Guofeng.PAPER_DEEP)
         setPadding(dp(16), dp(6), dp(16), dp(6))
         setOnClickListener { onClick() }
     }
@@ -381,16 +397,16 @@ class KnowledgeActivity : AppCompatActivity() {
         }
         val sw = TextView(this).apply {
             text = if (initial) "开" else "关"; textSize = 13f; gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(if (initial) Color.WHITE else sub)
-            background = round(dp(10), if (initial) accent else Color.parseColor("#E5E7EB"))
+            typeface = Guofeng.sans(true)
+            setTextColor(if (initial) Guofeng.CARD else sub)
+            background = round(12, if (initial) Guofeng.JADE else Guofeng.PAPER_DEEP)
             setPadding(dp(18), dp(6), dp(18), dp(6))
         }
         sw.setOnClickListener {
             val now = !((row.tag as? Boolean) ?: true); row.tag = now
             sw.text = if (now) "开" else "关"
-            sw.setTextColor(if (now) Color.WHITE else sub)
-            sw.background = round(dp(10), if (now) accent else Color.parseColor("#E5E7EB"))
+            sw.setTextColor(if (now) Guofeng.CARD else sub)
+            sw.background = round(12, if (now) Guofeng.JADE else Guofeng.PAPER_DEEP)
         }
         row.addView(lab); row.addView(sw)
         return row
@@ -400,7 +416,8 @@ class KnowledgeActivity : AppCompatActivity() {
 
     private fun card() = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        background = round(dp(14), Color.WHITE)
+        background = Guofeng.round(this@KnowledgeActivity, 17, Guofeng.CARD, Guofeng.BORDER)
+        elevation = dp(1).toFloat()
         setPadding(dp(14), dp(12), dp(14), dp(12))
         layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -411,21 +428,32 @@ class KnowledgeActivity : AppCompatActivity() {
 
     private fun edit(value: String, hintText: String) = EditText(this).apply {
         setText(value); hint = hintText; textSize = 14f; setTextColor(ink)
-        setHintTextColor(Color.parseColor("#9CA3AF"))
-        background = round(dp(8), Color.parseColor("#F3F4F6"))
+        setHintTextColor(Guofeng.INK_FAINT)
+        background = Guofeng.round(this@KnowledgeActivity, 10, Guofeng.CARD_SOFT, Guofeng.BORDER)
         setPadding(dp(10), dp(10), dp(10), dp(10))
         layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             .apply { topMargin = dp(2) }
     }
 
-    private fun text(t: String, size: Float, color: Int, bold: Boolean = false) = TextView(this).apply {
-        text = t; textSize = size; setTextColor(color)
-        if (bold) setTypeface(typeface, Typeface.BOLD)
+    private fun text(
+        t: String,
+        size: Float,
+        color: Int,
+        bold: Boolean = false,
+        serif: Boolean = false
+    ) = TextView(this).apply {
+        text = t
+        textSize = size
+        setTextColor(color)
+        typeface = if (serif) Guofeng.serif(bold) else Guofeng.sans(bold)
     }
 
-    private fun round(radius: Int, color: Int, stroke: Boolean = false) = GradientDrawable().apply {
-        cornerRadius = radius.toFloat(); setColor(color)
-        if (stroke) setStroke(dp(1), accent)
-    }
+    private fun round(radiusDp: Int, color: Int, stroke: Boolean = false) =
+        Guofeng.round(
+            this,
+            radiusDp,
+            color,
+            if (stroke) Guofeng.BORDER_JADE else null
+        )
 }

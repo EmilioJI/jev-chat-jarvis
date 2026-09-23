@@ -33,8 +33,10 @@ data class Contact(
     val apps: List<String> = emptyList(),
     val relationship: String = "",
     val notes: String = "",
-    /** Reserved for the (deferred) auto-summary; never written in v1.3. */
+    /** Model-generated rolling summary; created only after explicit opt-in. */
     val autoSummary: String = "",
+    /** Newest chat timestamp covered by [autoSummary]. */
+    val autoSummaryThroughTs: Long = 0L,
     val updatedAt: Long = System.currentTimeMillis()
 )
 
@@ -62,20 +64,26 @@ data class ChatContext(
      * "title: content". Blank when there is nothing to say — callers must then
      * omit the field entirely rather than send an empty one.
      *
-     * @param defaultRelationship unused when the contact carries no relationship
-     *        of its own — that global default already goes out separately as
-     *        `chat.relationship`, so repeating it here would just duplicate it.
-     *        A contact with no relationship set simply omits the "关系：" line.
+     * The global default relationship already goes out separately as
+     * `chat.relationship`, so it is intentionally not repeated here. A contact
+     * with no relationship set simply omits the "关系：" line.
      */
-    fun background(defaultRelationship: String): String {
+    fun background(): String {
         val sb = StringBuilder()
         contact?.let { c ->
             val rel = c.relationship.trim()
             if (rel.isNotEmpty()) sb.append("关系：").append(rel).append('\n')
             if (c.notes.isNotBlank()) sb.append("关于").append(c.name).append("：")
                 .append(c.notes.trim()).append('\n')
-            if (c.autoSummary.isNotBlank()) sb.append("过往摘要：")
-                .append(c.autoSummary.trim()).append('\n')
+            if (c.autoSummary.isNotBlank()) {
+                sb.append("过往摘要")
+                if (c.autoSummaryThroughTs > 0L) {
+                    sb.append("（覆盖至记录时间 ")
+                        .append(HistoryTime.absolute(c.autoSummaryThroughTs))
+                        .append("）")
+                }
+                sb.append("：").append(c.autoSummary.trim()).append('\n')
+            }
         }
         notes.forEach { n ->
             sb.append(n.title.trim()).append(": ").append(n.content.trim()).append('\n')

@@ -1,3 +1,15 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <style name="Theme.JevProbe" parent="Theme.MaterialComponents.DayNight.NoActionBar" />
+    <style name="Theme.JevProbe" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <item name="colorPrimary">#276759</item>
+        <item name="colorPrimaryVariant">#184940</item>
+        <item name="colorOnPrimary">#FBF9F3</item>
+        <item name="colorSecondary">#A43730</item>
+        <item name="colorOnSecondary">#FBF9F3</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">#F6F2E8</item>
+        <item name="android:navigationBarColor">#F6F2E8</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:fontFamily">sans</item>
+    </style>
 </resources>

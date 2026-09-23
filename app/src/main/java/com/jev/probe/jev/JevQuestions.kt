@@ -1,6 +1,7 @@
 package com.jev.probe.jev
 
 import com.jev.probe.core.ChatSnapshot
+import com.jev.probe.core.kb.HistoryTime
 import com.jev.probe.core.kb.LogEntry
 import org.json.JSONArray
 import org.json.JSONObject
@@ -185,18 +186,35 @@ object JevQuestions {
     ): JSONObject {
         val msgs = JSONArray()
         val last10 = snapshot.messages.takeLast(10)
+        val now = System.currentTimeMillis()
         for (m in last10) {
-            msgs.put(JSONObject().put("from", m.side).put("text", m.text))
+            val text = m.ts?.takeIf { it > 0L }?.let {
+                HistoryTime.stamp(it, now) + " " + m.text
+            } ?: m.text
+            msgs.put(JSONObject().put("from", m.side).put("text", text))
         }
         val chat = JSONObject()
             .put("relationship", relationship)
             .put("messages", msgs)
             .put("latest_from", last10.lastOrNull()?.side ?: "other")
         val state = JSONObject().put("chat", chat)
-        if (background.isNotBlank()) state.put("background", background)
+        val effectiveBackground = buildString {
+            if (history.isNotEmpty()) append(HistoryTime.modelGuidance(now))
+            if (background.isNotBlank()) {
+                if (isNotEmpty()) append('\n')
+                append(background)
+            }
+        }
+        if (effectiveBackground.isNotBlank()) state.put("background", effectiveBackground)
         if (history.isNotEmpty()) {
+            // Preserve the existing {from,text} wire shape for Jev providers;
+            // encode time in the text prefix instead of adding unknown fields.
             val h = JSONArray()
-            history.forEach { h.put(JSONObject().put("from", it.side).put("text", it.text)) }
+            history.forEach {
+                h.put(JSONObject()
+                    .put("from", it.side)
+                    .put("text", HistoryTime.stamp(it.ts, now) + " " + it.text))
+            }
             state.put("history", h)
         }
         return state

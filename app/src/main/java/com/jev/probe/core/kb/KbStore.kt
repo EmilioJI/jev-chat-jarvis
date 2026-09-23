@@ -70,10 +70,14 @@ class KbStore private constructor(context: Context) {
 
     fun contact(id: String): Contact? = synchronized(lock) { loadContacts().firstOrNull { it.id == id } }
 
-    fun saveContact(c: Contact): Boolean = synchronized(lock) {
+    fun saveContact(c: Contact, touchUpdatedAt: Boolean = true): Boolean = synchronized(lock) {
         val list = loadContacts()
         val i = list.indexOfFirst { it.id == c.id }
-        val stamped = c.copy(updatedAt = System.currentTimeMillis())
+        val stamped = if (touchUpdatedAt) {
+            c.copy(updatedAt = System.currentTimeMillis())
+        } else {
+            c
+        }
         if (i >= 0) list[i] = stamped else list.add(stamped)
         val ok = writeAtomic(contactsFile, contactsJson(list))
         if (!ok) contactsCache = null
@@ -97,11 +101,13 @@ class KbStore private constructor(context: Context) {
 
     /**
      * Match a conversation title to a contact by normalized name or alias.
-     * Never creates anything: an unknown title simply has no contact (v1.3
-     * revision — contacts are only ever created by the user).
+     * Never creates anything: an unknown title simply has no contact.
      *
-     * @param app package name of the chat app the title came from; used only to
-     *        prefer a contact that already knows this app when two match.
+     * A profile-scoped WeChat app id (for example "com.tencent.mm@UserHandle{0}")
+     * is a hard namespace boundary. If no same-name contact carries that exact
+     * scope, return null instead of falling back to another same-name contact.
+     * This prevents WeChat A/B from sharing relationship notes or history merely
+     * because both accounts use the same display name.
      */
     fun findContact(title: String, app: String): Contact? {
         synchronized(lock) {
@@ -110,8 +116,7 @@ class KbStore private constructor(context: Context) {
             val hits = loadContacts().filter { c ->
                 normalizeName(c.name) == want || c.aliases.any { normalizeName(it) == want }
             }
-            if (hits.isEmpty()) return null
-            return hits.firstOrNull { app.isNotBlank() && it.apps.contains(app) } ?: hits.first()
+            return chooseContactForApp(hits, app)
         }
     }
 
@@ -160,16 +165,22 @@ class KbStore private constructor(context: Context) {
      *  - log is empty          → write all of S.
      *  - log tail matches the first k lines of S (k > 0) → the screen scrolled by
      *    (S.size - k) lines; append only that new tail.
-     *  - k is 0 and S shares nothing with P → the user scrolled up into old
-     *    messages we already hold; this round writes nothing rather than
-     *    duplicating history at the end of the file.
+     *  - k is 0 and S shares nothing with P → ambiguous:
+     *      - CONSERVATIVE: treat it as an older scrolled screen and write nothing.
+     *      - NEWEST_SCREEN: accept all of S as the new head after a long absence.
      *  - anything else         → append all of S.
      *
      * @param screenBatch true for a capture (the rules above). False for a
-     *        deliberate single-entry injection that is NOT a screen read, which
-     *        is appended as-is.
+     *        deliberate single-entry injection that is NOT a screen read.
+     * @param captureHint evidence about whether a zero-overlap capture is known
+     *        to be the newest screen; conservative by default.
      */
-    fun appendLog(contactId: String, entries: List<LogEntry>, screenBatch: Boolean = true): Boolean {
+    fun appendLog(
+        contactId: String,
+        entries: List<LogEntry>,
+        screenBatch: Boolean = true,
+        captureHint: HistoryCaptureHint = HistoryCaptureHint.CONSERVATIVE
+    ): Boolean {
         if (entries.isEmpty()) return true
         synchronized(lock) {
             val screen = entries.filter { it.text.isNotBlank() }
@@ -197,11 +208,18 @@ class KbStore private constructor(context: Context) {
                 !screenBatch -> screen
                 list.isEmpty() -> screen
                 k > 0 -> screen.drop(k)
-                // Nothing in common with the screen we last wrote → we are looking
-                // at older messages, not newer ones. Leave the log alone.
-                prev.isNotEmpty() && keys.none { it in prev } -> {
-                    Log.d(TAG, "appendLog contact=$contactId skipped: scrolled off the last screen")
+                // A zero-overlap screen is ambiguous. Manual reads and scrolls
+                // stay conservative; only a capture explicitly marked as the
+                // newest screen may advance history after a long absence.
+                prev.isNotEmpty() && keys.none { it in prev } &&
+                    captureHint == HistoryCaptureHint.CONSERVATIVE -> {
+                    Log.d(TAG, "appendLog contact=$contactId skipped: zero-overlap conservative screen")
                     return true
+                }
+                prev.isNotEmpty() && keys.none { it in prev } &&
+                    captureHint == HistoryCaptureHint.NEWEST_SCREEN -> {
+                    Log.d(TAG, "appendLog contact=$contactId accepted: zero-overlap newest screen")
+                    screen
                 }
                 else -> screen
             }
@@ -237,6 +255,22 @@ class KbStore private constructor(context: Context) {
         lastScreenCache.remove(contactId)
         runCatching { logFile(contactId).delete() }
         runCatching { screenFile(contactId).delete() }
+
+        // The rolling summary is derived from this history. Clearing history
+        // must clear the derived memory too, otherwise "clear history" would
+        // leave model-compressed chat facts behind.
+        val contacts = loadContacts()
+        val i = contacts.indexOfFirst { it.id == contactId }
+        if (i >= 0) {
+            val existing = contacts[i]
+            if (existing.autoSummary.isNotBlank() || existing.autoSummaryThroughTs != 0L) {
+                contacts[i] = existing.copy(
+                    autoSummary = "",
+                    autoSummaryThroughTs = 0L
+                )
+                if (!writeAtomic(contactsFile, contactsJson(contacts))) contactsCache = null
+            }
+        }
         Unit
     }
 
@@ -328,6 +362,7 @@ class KbStore private constructor(context: Context) {
                     relationship = o.optString("relationship"),
                     notes = o.optString("notes"),
                     autoSummary = o.optString("autoSummary"),
+                    autoSummaryThroughTs = o.optLong("autoSummaryThroughTs", 0L).coerceAtLeast(0L),
                     updatedAt = o.optLong("updatedAt", 0L)
                 ))
             }
@@ -381,6 +416,7 @@ class KbStore private constructor(context: Context) {
                 .put("relationship", c.relationship)
                 .put("notes", c.notes)
                 .put("autoSummary", c.autoSummary)
+                .put("autoSummaryThroughTs", c.autoSummaryThroughTs)
                 .put("updatedAt", c.updatedAt))
         }
         return arr.toString()
@@ -482,6 +518,18 @@ class KbStore private constructor(context: Context) {
             }
 
         fun newId(): String = java.util.UUID.randomUUID().toString().substring(0, 12)
+
+        internal fun chooseContactForApp(hits: List<Contact>, app: String): Contact? {
+            if (hits.isEmpty()) return null
+            if (app.isNotBlank()) {
+                hits.firstOrNull { it.apps.contains(app) }?.let { return it }
+            }
+            if (isProfileScopedWeChat(app)) return null
+            return hits.first()
+        }
+
+        internal fun isProfileScopedWeChat(app: String): Boolean =
+            app.startsWith("com.tencent.mm@")
 
         /**
          * Compile a pattern without ever taking the class down with it. A

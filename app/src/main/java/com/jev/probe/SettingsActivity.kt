@@ -1,9 +1,6 @@
 package com.jev.probe
 
 import android.graphics.Bitmap
-import android.graphics.Color
-import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -24,11 +21,15 @@ import androidx.appcompat.app.AppCompatActivity
 import com.jev.probe.core.ChatSnapshot
 import com.jev.probe.core.Msg
 import com.jev.probe.core.Prefs
+import com.jev.probe.core.SecuritySelfCheck
+import com.jev.probe.capture.ocr.VisionDialogParser
 import com.jev.probe.core.kb.KbSelfCheck
 import com.jev.probe.core.kb.KbStore
-import com.jev.probe.jev.JudgeClient
+import com.jev.probe.jev.JevClient
 import com.jev.probe.jev.ReplyClient
 import com.jev.probe.jev.VisionClient
+import com.jev.probe.ui.Guofeng
+import com.jev.probe.ui.InkPaperDrawable
 import java.util.concurrent.Executors
 import kotlin.math.roundToInt
 
@@ -38,10 +39,10 @@ class SettingsActivity : AppCompatActivity() {
     private val worker = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
 
-    private val accent = Color.parseColor("#3A7AFE")
-    private val ink = Color.parseColor("#111827")
-    private val sub = Color.parseColor("#6B7280")
-    private val pillOff = Color.parseColor("#EEF1F5")
+    private val accent = Guofeng.JADE
+    private val ink = Guofeng.INK
+    private val sub = Guofeng.INK_SOFT
+    private val pillOff = Guofeng.GOLD_SOFT
 
     /** Selected provider index per card, held so Save can read it back. */
     private var judgeProviderIdx = 0
@@ -54,9 +55,12 @@ class SettingsActivity : AppCompatActivity() {
         prefs = Prefs(this)
         Log.i(TAG, "settings opened judgeKey.len=${prefs.judgeKey.length}" +
             " replyKey.len=${prefs.replyKey.length} visionKey.len=${prefs.visionKey.length}")
-        window.decorView.setBackgroundColor(Color.parseColor("#F2F3F5"))
+        Guofeng.applyWindow(this)
 
-        val scroll = ScrollView(this)
+        val scroll = ScrollView(this).apply {
+            isVerticalScrollBarEnabled = false
+            background = InkPaperDrawable()
+        }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(18), dp(22), dp(18), dp(28))
@@ -65,24 +69,31 @@ class SettingsActivity : AppCompatActivity() {
         scroll.addView(root)
 
         root.addView(header("设置"))
+        root.addView(text("接口 · 分析 · 隐私 · 外观", 12.5f, Guofeng.GOLD).apply {
+            setPadding(0, dp(2), 0, dp(6))
+        })
 
         // =================== 接口 ===================
         root.addView(section("接口"))
 
-        // --- 判断接口（Jev） ---
+        // --- 判断引擎 ---
         val judgeCard = card()
-        judgeCard.addView(cardTitle("判断接口（Jev）"))
-        judgeCard.addView(text("读对方消息、给意图判断和候选排序。必须配置。", 12f, sub))
+        judgeCard.addView(cardTitle("判断引擎"))
+        judgeCard.addView(text(
+            "推荐 OpenRouter Jev；TypeSafe 直连仅适合已有 Key；也可用 GLM-4.7 做结构化判断。",
+            12f, sub
+        ))
 
         val judgeBaseEdit = edit(prefs.judgeBaseUrl, Prefs.DEFAULT_JUDGE_BASE_OPENROUTER)
         val judgeModelEdit = edit(prefs.judgeModel, Prefs.DEFAULT_JUDGE_MODEL_OPENROUTER)
         judgeProviderIdx = when (prefs.judgeProvider) {
             Prefs.PROVIDER_TYPESAFE -> 1
-            Prefs.PROVIDER_CUSTOM -> 2
+            Prefs.PROVIDER_GLM47 -> 2
+            Prefs.PROVIDER_CUSTOM -> 3
             else -> 0
         }
         judgeCard.addView(pills(
-            listOf("OpenRouter", "TypeSafe 直连", "自定义"), judgeProviderIdx) { idx ->
+            listOf("OpenRouter（推荐）", "TypeSafe（已有 Key）", "GLM-4.7", "自定义 Jev"), judgeProviderIdx) { idx ->
             judgeProviderIdx = idx
             when (idx) {
                 0 -> {
@@ -93,16 +104,30 @@ class SettingsActivity : AppCompatActivity() {
                     judgeBaseEdit.setText(Prefs.DEFAULT_JUDGE_BASE_TYPESAFE)
                     judgeModelEdit.setText(Prefs.DEFAULT_JUDGE_MODEL_TYPESAFE)
                 }
-                // Custom POSTs the box verbatim, so a preset HOST left in the box
-                // would hit the API root. Expand it into the full endpoint the
-                // preset would have used; anything hand-typed is left alone.
-                2 -> judgeBaseEdit.setText(expandJudgeUrl(judgeBaseEdit.text.toString()))
+                2 -> {
+                    judgeBaseEdit.setText(Prefs.DEFAULT_JUDGE_BASE_GLM47)
+                    judgeModelEdit.setText(Prefs.DEFAULT_JUDGE_MODEL_GLM47)
+                }
+                // Legacy custom mode speaks the Jev Decisions wire format.
+                // Do not silently reinterpret a GLM chat-completions preset as Jev.
+                3 -> {
+                    val current = judgeBaseEdit.text.toString().trim().trimEnd('/')
+                    if (current == Prefs.DEFAULT_JUDGE_BASE_GLM47) {
+                        judgeBaseEdit.setText("")
+                        judgeModelEdit.setText("")
+                    } else {
+                        judgeBaseEdit.setText(expandJudgeUrl(judgeBaseEdit.text.toString()))
+                    }
+                }
             }
         })
         judgeCard.addView(label("Base URL"))
         judgeCard.addView(judgeBaseEdit)
-        judgeCard.addView(text("OpenRouter 拼 /alpha/decisions；TypeSafe 拼 /v1/systemone；自定义按原样 POST。",
-            11f, sub))
+        judgeCard.addView(text(
+            "OpenRouter Jev：/alpha/decisions；TypeSafe：/v1/systemone；GLM-4.7：/chat/completions；" +
+                "自定义 Jev 按完整 URL POST。自定义公网地址必须 HTTPS（localhost/loopback 调试除外）。",
+            11f, sub
+        ))
         judgeCard.addView(label("密钥"))
         judgeCard.addView(edit(prefs.judgeKey, "sk-...", password = true).also { judgeKeyEdit = it })
         judgeCard.addView(label("模型"))
@@ -135,7 +160,11 @@ class SettingsActivity : AppCompatActivity() {
                 val t0 = System.currentTimeMillis()
                 val demo = ChatSnapshot("连通测试", listOf(
                     Msg("other", "在吗？"), Msg("me", "在")))
-                val a = JudgeClient(probe).judge(demo, prefs.relationship)
+                val a = try {
+                    JevClient(probe).judge(demo, prefs.relationship)
+                } finally {
+                    clearScratch(SCRATCH_JUDGE)
+                }
                 val ms = System.currentTimeMillis() - t0
                 main.post {
                     judgeResult.text = if (a.error != null) "失败（${ms}ms）：${a.error}"
@@ -150,48 +179,71 @@ class SettingsActivity : AppCompatActivity() {
         // --- 回复接口 ---
         val replyCard = card()
         replyCard.addView(cardTitle("回复接口"))
-        replyCard.addView(text("生成 3 条候选回复。任何 OpenAI 兼容地址，填到 /v1 为止。", 12f, sub))
+        replyCard.addView(text(
+            "生成 3 条候选回复。DeepSeek Flash 强制关闭 thinking；GLM-5.3-Flash 强制 reasoning_effort=low。" +
+                " 留空 Key 只在同 host 时继承；自定义公网地址必须 HTTPS。",
+            12f, sub
+        ))
 
         val replyBaseEdit = edit(prefs.replyBaseUrl, Prefs.DEFAULT_REPLY_BASE)
         val replyModelEdit = edit(prefs.replyModel, Prefs.DEFAULT_REPLY_MODEL)
         val replyIdx = when (prefs.replyBaseUrl.trim().trimEnd('/')) {
             Prefs.DEFAULT_REPLY_BASE -> 0
             Prefs.DEEPSEEK_BASE -> 1
-            Prefs.DASHSCOPE_BASE -> 2
-            else -> 3
+            Prefs.GLM_BASE -> 2
+            Prefs.DASHSCOPE_BASE -> 3
+            else -> 4
         }
         replyCard.addView(pills(
-            listOf("OpenRouter", "DeepSeek 官方", "通义兼容", "自定义"), replyIdx) { idx ->
+            listOf("OpenRouter", "DeepSeek Flash", "GLM-5.3-Flash", "通义兼容", "自定义"), replyIdx) { idx ->
             when (idx) {
                 0 -> { replyBaseEdit.setText(Prefs.DEFAULT_REPLY_BASE); replyModelEdit.setText(Prefs.DEFAULT_REPLY_MODEL) }
                 1 -> { replyBaseEdit.setText(Prefs.DEEPSEEK_BASE); replyModelEdit.setText(Prefs.DEEPSEEK_MODEL) }
-                2 -> { replyBaseEdit.setText(Prefs.DASHSCOPE_BASE); replyModelEdit.setText(Prefs.DASHSCOPE_MODEL) }
+                2 -> { replyBaseEdit.setText(Prefs.GLM_BASE); replyModelEdit.setText(Prefs.GLM_MODEL) }
+                3 -> { replyBaseEdit.setText(Prefs.DASHSCOPE_BASE); replyModelEdit.setText(Prefs.DASHSCOPE_MODEL) }
             }
         })
         replyCard.addView(label("Base URL"))
         replyCard.addView(replyBaseEdit)
         replyCard.addView(label("密钥"))
-        replyCard.addView(edit(prefs.replyKey, "留空则用判断接口密钥", password = true).also { replyKeyEdit = it })
+        replyCard.addView(edit(
+            prefs.replyKey,
+            "留空时，仅同服务商可继承判断密钥",
+            password = true
+        ).also { replyKeyEdit = it })
         replyCard.addView(label("模型"))
         replyCard.addView(replyModelEdit)
         val replyResult = resultText()
         replyCard.addView(cardBtn("测试回复") {
             val base = replyBaseEdit.text.toString().trim()
             val model = replyModelEdit.text.toString().trim()
+            val judgeBaseNow = judgeBaseEdit.text.toString().trim()
+            val judgeProviderNow = resolveJudgeProvider(judgeProviderIdx, judgeBaseNow)
             val probe = draftPrefs(SCRATCH_REPLY) {
+                judgeProvider = judgeProviderNow
+                judgeBaseUrl = judgeBaseNow.ifBlank { defaultJudgeBase(judgeProviderNow) }
                 judgeKey = judgeKeyEdit.text.toString().trim()
                 replyBaseUrl = base.ifBlank { Prefs.DEFAULT_REPLY_BASE }
                 replyKey = replyKeyEdit.text.toString().trim()
                 replyModel = model.ifBlank { Prefs.DEFAULT_REPLY_MODEL }
             }
-            if (probe.effectiveReplyKey().isBlank()) { replyResult.text = "请先填密钥（或填判断接口密钥）"; return@cardBtn }
+            if (probe.effectiveReplyKey().isBlank()) {
+                clearScratch(SCRATCH_REPLY)
+                replyResult.text = "请填写回复密钥；仅同服务商时可继承判断密钥"
+                return@cardBtn
+            }
             replyResult.text = "测试中…"
             worker.execute {
                 val t0 = System.currentTimeMillis()
                 var err: String? = null
                 val out = try {
                     ReplyClient(probe).ping()
-                } catch (e: Exception) { err = e.message; "" }
+                } catch (e: Exception) {
+                    err = e.message
+                    ""
+                } finally {
+                    clearScratch(SCRATCH_REPLY)
+                }
                 val ms = System.currentTimeMillis() - t0
                 main.post {
                     replyResult.text = if (err != null) "失败（${ms}ms）：$err"
@@ -204,8 +256,12 @@ class SettingsActivity : AppCompatActivity() {
 
         // --- 视觉接口 ---
         val visionCard = card()
-        visionCard.addView(cardTitle("视觉接口（OCR 用，可先不填）"))
-        visionCard.addView(text("读不到控件树的 App 走截图识别。B 阶段才用到，现在填不填都不影响。", 12f, sub))
+        visionCard.addView(cardTitle("视觉接口（远程 OCR，可选）"))
+        visionCard.addView(text(
+            "只有在下面把 OCR 引擎切到“视觉 API”时才参与实时识别；默认 ML Kit 完全本地。" +
+                "远程模式只上传裁剪后的聊天内容区域；自定义公网地址必须 HTTPS。",
+            12f, sub
+        ))
 
         val visionBaseEdit = edit(prefs.visionBaseUrl, Prefs.DEFAULT_VISION_BASE)
         val visionModelEdit = edit(prefs.visionModel, Prefs.DEFAULT_VISION_MODEL)
@@ -224,32 +280,50 @@ class SettingsActivity : AppCompatActivity() {
         visionCard.addView(label("Base URL"))
         visionCard.addView(visionBaseEdit)
         visionCard.addView(label("密钥"))
-        visionCard.addView(edit(prefs.visionKey, "留空则用回复接口密钥", password = true).also { visionKeyEdit = it })
+        visionCard.addView(edit(
+            prefs.visionKey,
+            "留空时，仅同服务商可继承回复/判断密钥",
+            password = true
+        ).also { visionKeyEdit = it })
         visionCard.addView(label("模型"))
         visionCard.addView(visionModelEdit)
         val visionResult = resultText()
         visionCard.addView(cardBtn("测试视觉") {
             val visionBase = visionBaseEdit.text.toString().trim()
-            if (!VisionClient.supportsVision(visionBase.ifBlank { Prefs.DEFAULT_VISION_BASE })) {
+            val visionModelNow = visionModelEdit.text.toString().trim().ifBlank { Prefs.DEFAULT_VISION_MODEL }
+            if (!VisionClient.supportsVision(visionBase.ifBlank { Prefs.DEFAULT_VISION_BASE }, visionModelNow)) {
                 visionResult.text = GUARD_NO_VISION
                 return@cardBtn
             }
+            val judgeBaseNow = judgeBaseEdit.text.toString().trim()
+            val judgeProviderNow = resolveJudgeProvider(judgeProviderIdx, judgeBaseNow)
             val probe = draftPrefs(SCRATCH_VISION) {
+                judgeProvider = judgeProviderNow
+                judgeBaseUrl = judgeBaseNow.ifBlank { defaultJudgeBase(judgeProviderNow) }
                 judgeKey = judgeKeyEdit.text.toString().trim()
                 replyBaseUrl = replyBaseEdit.text.toString().trim().ifBlank { Prefs.DEFAULT_REPLY_BASE }
                 replyKey = replyKeyEdit.text.toString().trim()
                 visionBaseUrl = visionBase
                 visionKey = visionKeyEdit.text.toString().trim()
-                visionModel = visionModelEdit.text.toString().trim().ifBlank { Prefs.DEFAULT_VISION_MODEL }
+                visionModel = visionModelNow
             }
-            if (probe.effectiveVisionKey().isBlank()) { visionResult.text = "请先填密钥（或填回复/判断接口密钥）"; return@cardBtn }
+            if (probe.effectiveVisionKey().isBlank()) {
+                clearScratch(SCRATCH_VISION)
+                visionResult.text = "请填写视觉密钥；仅同服务商时可继承其它密钥"
+                return@cardBtn
+            }
             visionResult.text = "测试中…"
             worker.execute {
                 val t0 = System.currentTimeMillis()
                 var err: String? = null
                 val out = try {
                     VisionClient(probe).ask(whitePixelJpegB64(), "这张图是什么颜色？只回答颜色。")
-                } catch (e: Exception) { err = e.message; "" }
+                } catch (e: Exception) {
+                    err = e.message
+                    ""
+                } finally {
+                    clearScratch(SCRATCH_VISION)
+                }
                 val ms = System.currentTimeMillis() - t0
                 main.post {
                     visionResult.text = if (err != null) "失败（${ms}ms）：$err"
@@ -263,29 +337,80 @@ class SettingsActivity : AppCompatActivity() {
         // =================== 分析 ===================
         root.addView(section("分析"))
         val card2 = card()
-        card2.addView(label("关系描述（给 Jev 判断用）"))
-        val relEdit = edit(prefs.relationship, Prefs.DEFAULT_REL)
+        card2.addView(label("默认关系（可留空，联系人关系优先）"))
+        val relEdit = edit(prefs.relationship, "例如：同事、客户、家人；联系人可单独设置")
         card2.addView(relEdit)
+        card2.addView(text(
+            "主动分析时，如当前应用的标准控件可读，会把会话标题/备注名作为身份线索；微信安全模式不会在后台持续读取。不会仅凭昵称猜关系，联系人档案里的关系优先于这里。",
+            11f, sub
+        ))
         card2.addView(label("会话白名单（每行一个关键词，空=所有会话）"))
         val wlEdit = edit(prefs.whitelist.joinToString("\n"), "留空则对所有会话生效").apply {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE; minLines = 2
         }
         card2.addView(wlEdit)
-        val autoRow = toggleRow("对方发消息时自动分析", prefs.autoAnalyze)
+        val autoRow = toggleRow("其他适配应用收到消息时自动分析", prefs.autoAnalyze)
         card2.addView(autoRow)
+        card2.addView(text("默认关闭。微信始终采用主动模式：点悬浮球后才读取/分析当前内容。", 11f, sub))
 
-        // --- OCR 兜底（B 阶段）---
-        val ocrFallbackRow = toggleRow("树读不到正文时用 OCR 兜底", prefs.ocrFallback)
+        val wechatNotificationAutoRow = toggleRow(
+            "微信通知到达即自动分析（可选）",
+            prefs.wechatNotificationAutoAnalyze
+        )
+        card2.addView(wechatNotificationAutoRow)
+        card2.addView(text(
+            "默认关闭。开启后只使用 Android 通知标题、摘要和时间自动分析；仍不读取微信内部控件。关闭时则是“通知到达→悬浮球亮→点一下分析”。",
+            11f, sub
+        ))
+
+        val wechatAutoCopyRow = toggleRow(
+            "极速：首选回复生成后自动复制",
+            prefs.wechatAutoCopyTopReply
+        )
+        card2.addView(wechatAutoCopyRow)
+        card2.addView(text(
+            "默认关闭。开启后只把模型最终排名第一的候选放进系统剪贴板并收起面板；不会写入微信输入框，也不会发送。与“通知到达即自动分析”同时开启时，打开微信后通常只需粘贴并发送。",
+            11f, sub
+        ))
+
+        // --- OCR 兜底 ---
+        var ocrEngineSelected = prefs.ocrEngine
+        card2.addView(label("OCR 引擎"))
+        card2.addView(pills(
+            listOf("本地 ML Kit（默认）", "视觉 API（上传裁剪聊天区）"),
+            if (ocrEngineSelected == Prefs.OCR_VISION) 1 else 0
+        ) { idx ->
+            ocrEngineSelected = if (idx == 1) Prefs.OCR_VISION else Prefs.OCR_MLKIT
+        })
+        card2.addView(text(
+            "本地 ML Kit 完全在手机上运行，不需要图像 API Key，也不上传截图；视觉 API 是可选能力，只有你明确选择后才会上传裁剪后的聊天区域。微信不会强制截图识别。",
+            11f, sub
+        ))
+
+        val ocrFallbackRow = toggleRow("其他适配应用控件不可读时自动 OCR", prefs.ocrFallback)
         card2.addView(ocrFallbackRow)
-        card2.addView(text("飞书正文是画上去的、微信伪装失效时也读不到，这时截一次屏本地识别（不上传）。", 11f, sub))
+        card2.addView(text(
+            "默认关闭。微信安全模式不会自动触发 OCR；需要时由你在悬浮球里手动选择本地截屏识别。",
+            11f, sub
+        ))
         val ocrAutoRow = toggleRow("OCR 模式自动分析", prefs.ocrAutoAnalyze)
         card2.addView(ocrAutoRow)
-        card2.addView(text("关闭时 OCR 认完只亮悬浮球，点一下再分析。", 11f, sub))
+        card2.addView(text("仅影响非微信的自动 OCR 路径；微信仍需用户主动触发。", 11f, sub))
 
         // --- 知识库 / 关联上下文（D 阶段） ---
         val ctxRow = toggleRow("记录聊天历史（只存本机，用于关联上下文）", prefs.contextEnabled)
         card2.addView(ctxRow)
         card2.addView(text("关闭时不写任何聊天内容到磁盘；笔记与联系人匹配仍然照常工作。", 11f, sub))
+        val autoSummaryRow = toggleRow(
+            "自动更新联系人摘要（会调用回复模型）",
+            prefs.autoSummary
+        )
+        card2.addView(autoSummaryRow)
+        card2.addView(text(
+            "默认关闭。仅对已保存联系人、且已开启历史记录时生效；首次累计约 24 条后摘要，" +
+                "之后每新增约 20 条才更新。摘要会把已记录聊天发送到你选择的回复模型。",
+            11f, sub
+        ))
         card2.addView(label("注入最近历史条数（0–100）"))
         val ctxCountEdit = edit(prefs.contextHistoryCount.toString(), "30").apply {
             inputType = InputType.TYPE_CLASS_NUMBER
@@ -314,13 +439,26 @@ class SettingsActivity : AppCompatActivity() {
             setOnClickListener {
                 kbResult.text = "自检中…"
                 worker.execute {
-                    val out = try { KbSelfCheck.run(this@SettingsActivity) }
-                    catch (e: Exception) { "自检异常：${e.javaClass.simpleName} ${e.message ?: ""}" }
+                    val out = try {
+                        val kb = KbSelfCheck.run(this@SettingsActivity)
+                        val security = SecuritySelfCheck.run(this@SettingsActivity)
+                        val visionParser = if (VisionDialogParser.selfCheck()) {
+                            "视觉 OCR 解析自检通过。"
+                        } else {
+                            "视觉 OCR 解析自检失败。"
+                        }
+                        kb + "\n" + security + "\n" + visionParser
+                    } catch (e: Exception) {
+                        "自检异常：${e.javaClass.simpleName} ${e.message ?: ""}"
+                    }
                     main.post { kbResult.text = out }
                 }
             }
         })
         card2.addView(kbResult)
+        card2.addView(cardBtn("捕获诊断") {
+            startActivity(android.content.Intent(this, DiagnosticsActivity::class.java))
+        })
         root.addView(card2)
 
         // =================== 外观 ===================
@@ -376,14 +514,28 @@ class SettingsActivity : AppCompatActivity() {
             prefs.relationship = relEdit.text.toString()   // blank stays blank, on purpose
             prefs.whitelist = wlEdit.text.toString().split("\n")
                 .map { it.trim() }.filter { it.isNotEmpty() }.toSet()
-            prefs.autoAnalyze = (autoRow.tag as? Boolean) ?: true
-            prefs.ocrFallback = (ocrFallbackRow.tag as? Boolean) ?: true
+            prefs.autoAnalyze = (autoRow.tag as? Boolean) ?: false
+            prefs.wechatNotificationAutoAnalyze =
+                (wechatNotificationAutoRow.tag as? Boolean) ?: false
+            prefs.wechatAutoCopyTopReply =
+                (wechatAutoCopyRow.tag as? Boolean) ?: false
+            prefs.ocrEngine = ocrEngineSelected
+            prefs.ocrFallback = (ocrFallbackRow.tag as? Boolean) ?: false
             prefs.ocrAutoAnalyze = (ocrAutoRow.tag as? Boolean) ?: false
             prefs.contextEnabled = (ctxRow.tag as? Boolean) ?: false
+            prefs.autoSummary = (autoSummaryRow.tag as? Boolean) ?: false
             prefs.contextHistoryCount =
                 ctxCountEdit.text.toString().trim().toIntOrNull()?.coerceIn(0, 100) ?: 30
             prefs.overlayOpacity = seek.progress + 60
-            Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show()
+            val savedMessage = if (
+                prefs.ocrEngine == Prefs.OCR_VISION &&
+                prefs.effectiveVisionKey().isBlank()
+            ) {
+                "已保存；视觉 OCR 未配置可用密钥，将自动回退本地识别"
+            } else {
+                "已保存"
+            }
+            Toast.makeText(this, savedMessage, Toast.LENGTH_SHORT).show()
         })
 
         setContentView(scroll)
@@ -396,7 +548,8 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun providerOf(idx: Int) = when (idx) {
         1 -> Prefs.PROVIDER_TYPESAFE
-        2 -> Prefs.PROVIDER_CUSTOM
+        2 -> Prefs.PROVIDER_GLM47
+        3 -> Prefs.PROVIDER_CUSTOM
         else -> Prefs.PROVIDER_OPENROUTER
     }
 
@@ -410,6 +563,7 @@ class SettingsActivity : AppCompatActivity() {
         when (base.trim().trimEnd('/')) {
             Prefs.DEFAULT_JUDGE_BASE_OPENROUTER -> Prefs.PROVIDER_OPENROUTER
             Prefs.DEFAULT_JUDGE_BASE_TYPESAFE -> Prefs.PROVIDER_TYPESAFE
+            Prefs.DEFAULT_JUDGE_BASE_GLM47 -> Prefs.PROVIDER_GLM47
             else -> providerOf(idx)
         }
 
@@ -420,13 +574,17 @@ class SettingsActivity : AppCompatActivity() {
         else -> base.trim()
     }
 
-    private fun defaultJudgeBase(provider: String): String =
-        if (provider == Prefs.PROVIDER_TYPESAFE) Prefs.DEFAULT_JUDGE_BASE_TYPESAFE
-        else Prefs.DEFAULT_JUDGE_BASE_OPENROUTER
+    private fun defaultJudgeBase(provider: String): String = when (provider) {
+        Prefs.PROVIDER_TYPESAFE -> Prefs.DEFAULT_JUDGE_BASE_TYPESAFE
+        Prefs.PROVIDER_GLM47 -> Prefs.DEFAULT_JUDGE_BASE_GLM47
+        else -> Prefs.DEFAULT_JUDGE_BASE_OPENROUTER
+    }
 
-    private fun defaultJudgeModel(provider: String): String =
-        if (provider == Prefs.PROVIDER_TYPESAFE) Prefs.DEFAULT_JUDGE_MODEL_TYPESAFE
-        else Prefs.DEFAULT_JUDGE_MODEL_OPENROUTER
+    private fun defaultJudgeModel(provider: String): String = when (provider) {
+        Prefs.PROVIDER_TYPESAFE -> Prefs.DEFAULT_JUDGE_MODEL_TYPESAFE
+        Prefs.PROVIDER_GLM47 -> Prefs.DEFAULT_JUDGE_MODEL_GLM47
+        else -> Prefs.DEFAULT_JUDGE_MODEL_OPENROUTER
+    }
 
     /**
      * A throwaway [Prefs] view carrying exactly what is in the boxes right now,
@@ -436,14 +594,18 @@ class SettingsActivity : AppCompatActivity() {
      * touched either way.
      */
     private fun draftPrefs(scratchName: String, fill: Prefs.() -> Unit): Prefs {
-        getSharedPreferences(scratchName, MODE_PRIVATE).edit().clear().commit()
+        clearScratch(scratchName)
         return Prefs(this, scratchName).apply(fill)
+    }
+
+    private fun clearScratch(scratchName: String) {
+        getSharedPreferences(scratchName, MODE_PRIVATE).edit().clear().commit()
     }
 
     /** 1x1 white JPEG for the vision smoke test, via the real encoder path. */
     private fun whitePixelJpegB64(): String {
         val bmp = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
-        bmp.eraseColor(Color.WHITE)
+        bmp.eraseColor(Guofeng.CARD)
         return VisionClient.encodeJpeg(bmp)
     }
 
@@ -483,9 +645,9 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun paintPill(v: TextView, on: Boolean) {
-        v.setTextColor(if (on) Color.WHITE else sub)
-        v.setTypeface(v.typeface, if (on) Typeface.BOLD else Typeface.NORMAL)
-        v.background = round(dp(9), if (on) accent else pillOff)
+        v.setTextColor(if (on) Guofeng.CARD else sub)
+        v.typeface = Guofeng.sans(on)
+        v.background = round(9, if (on) accent else pillOff)
     }
 
     private fun toggleRow(labelText: String, initial: Boolean): LinearLayout {
@@ -498,31 +660,38 @@ class SettingsActivity : AppCompatActivity() {
         }
         val sw = TextView(this).apply {
             text = if (initial) "开" else "关"; textSize = 13f; gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(if (initial) Color.WHITE else sub)
-            background = round(dp(10), if (initial) accent else Color.parseColor("#E5E7EB"))
+            typeface = Guofeng.sans(true)
+            setTextColor(if (initial) Guofeng.CARD else sub)
+            background = round(10, if (initial) accent else Guofeng.PAPER_DEEP)
             setPadding(dp(18), dp(6), dp(18), dp(6))
         }
         sw.setOnClickListener {
             val now = !((row.tag as? Boolean) ?: true); row.tag = now
             sw.text = if (now) "开" else "关"
-            sw.setTextColor(if (now) Color.WHITE else sub)
-            sw.background = round(dp(10), if (now) accent else Color.parseColor("#E5E7EB"))
+            sw.setTextColor(if (now) Guofeng.CARD else sub)
+            sw.background = round(10, if (now) accent else Guofeng.PAPER_DEEP)
         }
         row.addView(lab); row.addView(sw)
         return row
     }
 
     // atoms
-    private fun header(t: String) = text(t, 24f, ink, bold = true).apply { setPadding(0, 0, 0, dp(4)) }
-    private fun section(t: String) = text(t, 12f, sub, bold = true).apply { setPadding(dp(2), dp(16), 0, dp(6)) }
-    private fun label(t: String) = text(t, 13f, ink, bold = true).apply { setPadding(0, dp(12), 0, dp(4)) }
-    private fun cardTitle(t: String) = text(t, 16f, ink, bold = true).apply { setPadding(0, dp(10), 0, dp(4)) }
+    private fun header(t: String) = text(t, 27f, Guofeng.JADE_DEEP, bold = true, serif = true)
+        .apply { setPadding(0, 0, 0, dp(2)) }
+    private fun section(t: String) = text(t, 16f, Guofeng.JADE_DEEP, bold = true, serif = true)
+        .apply { setPadding(dp(2), dp(18), 0, dp(5)) }
+    private fun label(t: String) = text(t, 13f, ink, bold = true).apply {
+        setPadding(0, dp(12), 0, dp(4))
+    }
+    private fun cardTitle(t: String) = text(t, 16f, Guofeng.INK, bold = true, serif = true).apply {
+        setPadding(0, dp(10), 0, dp(4))
+    }
     private fun resultText() = text("", 12.5f, sub).apply { setPadding(0, dp(10), 0, dp(2)) }
 
     private fun card() = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        background = round(dp(14), Color.WHITE)
+        background = Guofeng.round(this@SettingsActivity, 17, Guofeng.CARD, Guofeng.BORDER)
+        elevation = dp(1).toFloat()
         setPadding(dp(14), dp(4), dp(14), dp(14))
         layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -531,8 +700,8 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun edit(value: String, hint: String, password: Boolean = false) = EditText(this).apply {
         setText(value); this.hint = hint; textSize = 14f; setTextColor(ink)
-        setHintTextColor(Color.parseColor("#9CA3AF"))
-        background = round(dp(8), Color.parseColor("#F3F4F6"))
+        setHintTextColor(Guofeng.INK_FAINT)
+        background = Guofeng.round(this@SettingsActivity, 10, Guofeng.CARD_SOFT, Guofeng.BORDER)
         setPadding(dp(10), dp(10), dp(10), dp(10))
         // Masked, not VISIBLE_PASSWORD: an API key should not sit in plain sight.
         if (password) inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
@@ -540,13 +709,22 @@ class SettingsActivity : AppCompatActivity() {
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(2) }
     }
 
-    private fun text(t: String, size: Float, color: Int, bold: Boolean = false) = TextView(this).apply {
-        text = t; textSize = size; setTextColor(color); if (bold) setTypeface(typeface, Typeface.BOLD)
+    private fun text(
+        t: String,
+        size: Float,
+        color: Int,
+        bold: Boolean = false,
+        serif: Boolean = false
+    ) = TextView(this).apply {
+        text = t
+        textSize = size
+        setTextColor(color)
+        typeface = if (serif) Guofeng.serif(bold) else Guofeng.sans(bold)
     }
 
     private fun primaryBtn(label: String, onClick: () -> Unit) = TextView(this).apply {
-        text = label; textSize = 15f; gravity = Gravity.CENTER; setTypeface(typeface, Typeface.BOLD)
-        setTextColor(Color.WHITE); background = round(dp(12), accent)
+        text = label; textSize = 15f; gravity = Gravity.CENTER; typeface = Guofeng.serif(true)
+        setTextColor(Guofeng.CARD); background = round(12, accent)
         setPadding(dp(16), dp(13), dp(16), dp(13))
         layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(18) }
@@ -555,17 +733,21 @@ class SettingsActivity : AppCompatActivity() {
 
     /** Outlined button sized for inside a card. */
     private fun cardBtn(label: String, onClick: () -> Unit) = TextView(this).apply {
-        text = label; textSize = 14f; gravity = Gravity.CENTER; setTypeface(typeface, Typeface.BOLD)
-        setTextColor(accent); background = round(dp(10), Color.WHITE, stroke = true)
+        text = label; textSize = 14f; gravity = Gravity.CENTER; typeface = Guofeng.sans(true)
+        setTextColor(accent); background = round(10, Guofeng.CARD, stroke = true)
         setPadding(dp(14), dp(10), dp(14), dp(10))
         layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) }
         setOnClickListener { onClick() }
     }
 
-    private fun round(radius: Int, color: Int, stroke: Boolean = false) = GradientDrawable().apply {
-        cornerRadius = radius.toFloat(); setColor(color); if (stroke) setStroke(dp(1), accent)
-    }
+    private fun round(radiusDp: Int, color: Int, stroke: Boolean = false) =
+        Guofeng.round(
+            this,
+            radiusDp,
+            color,
+            if (stroke) Guofeng.BORDER_JADE else null
+        )
 
     override fun onDestroy() { super.onDestroy(); worker.shutdownNow() }
 
@@ -574,7 +756,7 @@ class SettingsActivity : AppCompatActivity() {
 
         /** DeepSeek's official API has no vision model; say so instead of a 400. */
         private const val GUARD_NO_VISION =
-            "该接口不支持视觉（DeepSeek 官方没有 image_url），请换 OpenRouter 或通义兼容"
+            "DeepSeek 官方视觉仅支持 deepseek-flash；请改模型名或换 OpenRouter / 通义兼容"
 
         /** One scratch prefs file per test button; never the real config. */
         private const val SCRATCH_JUDGE = "jev_probe_scratch_judge"

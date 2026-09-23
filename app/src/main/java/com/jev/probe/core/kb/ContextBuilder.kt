@@ -32,7 +32,13 @@ object ContextBuilder {
      * @return context for this snapshot; every field may be empty, which is the
      *         normal state before the user has built a knowledge base.
      */
-    fun build(context: Context, snapshot: ChatSnapshot, app: String, prefs: Prefs): ChatContext {
+    fun build(
+        context: Context,
+        snapshot: ChatSnapshot,
+        app: String,
+        prefs: Prefs,
+        historyHint: HistoryCaptureHint = HistoryCaptureHint.CONSERVATIVE
+    ): ChatContext {
         val store = KbStore.get(context)
         val title = snapshot.title ?: ""
 
@@ -41,7 +47,7 @@ object ContextBuilder {
 
         // 2. History — recorded and injected only with the user's opt-in.
         val history = if (prefs.contextEnabled && contact != null)
-            historyFor(store, contact, snapshot, app, prefs) else emptyList()
+            historyFor(store, contact, snapshot, app, prefs, historyHint) else emptyList()
 
         // 3. Notes — always-on ones plus keyword hits.
         val enabled = store.notes().filter { it.enabled }
@@ -72,10 +78,15 @@ object ContextBuilder {
         contact: Contact,
         snapshot: ChatSnapshot,
         app: String,
-        prefs: Prefs
+        prefs: Prefs,
+        historyHint: HistoryCaptureHint
     ): List<LogEntry> {
         val now = System.currentTimeMillis()
-        store.appendLog(contact.id, snapshot.messages.map { LogEntry(it.side, it.text, now, app) })
+        store.appendLog(
+            contact.id,
+            snapshot.messages.map { LogEntry(it.side, it.text, it.ts?.takeIf { t -> t > 0L } ?: now, app) },
+            captureHint = historyHint
+        )
         val n = prefs.contextHistoryCount.coerceIn(0, 100)
         if (n == 0) return emptyList()
         val onScreen = snapshot.messages
@@ -117,7 +128,10 @@ object ContextBuilder {
 
     private fun cost(notes: List<Note>, history: List<LogEntry>): Int =
         notes.sumOf { it.title.length + it.content.length + 2 } +
-            history.sumOf { it.text.length + 3 }
+            // Each injected history line carries a timestamp/age prefix, and a
+            // one-time current-time/freshness instruction is added when history exists.
+            history.sumOf { it.text.length + 36 } +
+            if (history.isNotEmpty()) 180 else 0
 
     private const val TAG = "JEVASSIST"
 }

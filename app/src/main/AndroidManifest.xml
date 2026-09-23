@@ -83,7 +83,7 @@
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Keep the accessibility reader alive on aggressive OEM power management" />
+                android:value="Keep the user-visible assistant overlay and notification-assisted analysis available" />
         </service>
     </application>
 

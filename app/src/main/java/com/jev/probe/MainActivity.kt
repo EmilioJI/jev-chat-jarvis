@@ -512,9 +512,10 @@ class MainActivity : AppCompatActivity() {
         AlertDialog.Builder(this)
             .setTitle("小书童·快捷填入")
             .setMessage(
-                "这是可选的一次性辅助输入法，不替代你的日常键盘。启用后，候选回复旁会有“快捷填入”按钮。" +
-                    "你点击后由 Android 系统让你选择“小书童·快捷填入”，它只通过标准 InputConnection.commitText 写入当前文本框，" +
-                    "不会查找微信控件、不会模拟点击、不会发送消息；写入后会尝试自动切回上一个输入法。"
+                "这是可选的一次性辅助输入法，不替代你的日常键盘。Android 会把已启用输入法视为可用于文本编辑器的高敏感能力；" +
+                    "只有你主动选择“小书童·快捷填入”时它才成为当前输入法。\n\n" +
+                    "本版本只通过标准 InputConnection.commitText 写入你选中的候选，不读取光标前后文字、不读取选中文本、不记录你手工键入的内容，" +
+                    "不会查找微信控件、不会模拟点击、不会触发“发送”；写入后会尝试自动切回上一个输入法。"
             )
             .setNegativeButton("暂不开启", null)
             .setPositiveButton("前往输入法设置") { _, _ ->

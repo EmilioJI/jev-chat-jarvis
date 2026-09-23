@@ -7,7 +7,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$ProbePackage = "com.jev.probe.abprobe"
+$ProbePackage = "com.jev.probe.guofeng"
 $ProbeAction = "com.jev.probe.debug.PROBE_ACCESSIBILITY"
 $PrefsPath = "shared_prefs/jev_debug_accessibility_probe.xml"
 

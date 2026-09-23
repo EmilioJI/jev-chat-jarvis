@@ -40,6 +40,14 @@ class ChatSnapshotTest {
     }
 
     @Test
+    fun signatureDistinguishesSameTextAtDifferentTimes() {
+        val a = ChatSnapshot("会话", listOf(Msg("other", "同一句", 1_000L)))
+        val b = ChatSnapshot("会话", listOf(Msg("other", "同一句", 2_000L)))
+
+        assertNotEquals(a.signature(), b.signature())
+    }
+
+    @Test
     fun signatureIntentionallyUsesOnlyLastSixMessages() {
         val tail = (1..6).map { Msg(if (it % 2 == 0) "me" else "other", "尾部-$it") }
         val a = ChatSnapshot("会话", listOf(Msg("other", "很早以前-A")) + tail)

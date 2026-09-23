@@ -41,7 +41,7 @@ class KeepAliveService : Service() {
         val title: String,
         val text: String,
         val postTime: Long,
-        val userId: Int
+        val userLabel: String
     )
 
     private lateinit var prefs: Prefs
@@ -91,9 +91,9 @@ class KeepAliveService : Service() {
                 val title = intent.getStringExtra(EXTRA_TITLE).orEmpty().trim()
                 val text = intent.getStringExtra(EXTRA_TEXT).orEmpty().trim()
                 val ts = intent.getLongExtra(EXTRA_POST_TIME, System.currentTimeMillis())
-                val userId = intent.getIntExtra(EXTRA_USER_ID, 0)
+                val userLabel = intent.getStringExtra(EXTRA_USER_LABEL).orEmpty().ifBlank { "default" }
                 if (title.isNotBlank() || text.isNotBlank()) {
-                    receiveWeChatNotification(title, text, ts, userId)
+                    receiveWeChatNotification(title, text, ts, userLabel)
                 }
             }
             ACTION_SHOW -> if (prefs.enabled) overlay.showCaptureOnly()
@@ -126,18 +126,18 @@ class KeepAliveService : Service() {
         rawTitle: String,
         text: String,
         postTime: Long,
-        userId: Int
+        userLabel: String
     ) {
         if (!prefs.enabled) return
         val title = rawTitle.ifBlank { "微信消息" }
-        val key = "u$userId\u0000$title"
+        val key = userLabel + "\u0000" + title
         val q = inbox.getOrPut(key) { ArrayDeque() }
         if (q.lastOrNull()?.let {
                 it.text == text && kotlin.math.abs(it.postTime - postTime) < 2500L
             } == true
         ) return
 
-        q.addLast(WeChatNotification(title, text, postTime, userId))
+        q.addLast(WeChatNotification(title, text, postTime, userLabel))
         while (q.size > MAX_NOTIFICATION_HISTORY) q.removeFirst()
 
         latestKey = key
@@ -151,11 +151,11 @@ class KeepAliveService : Service() {
 
     private fun analyzeNotification(key: String) {
         val q = inbox[key] ?: return
-        val items = q.takeLast(MAX_ANALYSIS_MESSAGES)
+        val items = q.toList().takeLast(MAX_ANALYSIS_MESSAGES)
         if (items.isEmpty()) return
 
         val title = items.last().title
-        val userId = items.last().userId
+        val userLabel = items.last().userLabel
         val messages = items.map {
             val line = if (it.text.isBlank()) "（通知未显示正文）" else it.text
             Msg("other", HistoryTime.stamp(it.postTime) + " " + line)
@@ -163,7 +163,7 @@ class KeepAliveService : Service() {
         val snapshot = ChatSnapshot(
             title = title.takeIf { it != "微信消息" },
             messages = messages,
-            note = "微信通知上下文 · 时间来自 Android 通知 · u$userId；未读取微信内部控件"
+            note = "微信通知上下文 · 时间来自 Android 通知 · $userLabel；未读取微信内部控件"
         )
         analyzeSnapshot(snapshot, WECHAT_PKG, HistoryCaptureHint.NEWEST_SCREEN)
     }
@@ -331,7 +331,7 @@ class KeepAliveService : Service() {
         private const val EXTRA_TITLE = "title"
         private const val EXTRA_TEXT = "text"
         private const val EXTRA_POST_TIME = "post_time"
-        private const val EXTRA_USER_ID = "user_id"
+        private const val EXTRA_USER_LABEL = "user_label"
 
         fun start(ctx: Context) {
             val i = Intent(ctx, KeepAliveService::class.java).setAction(ACTION_SHOW)
@@ -348,14 +348,14 @@ class KeepAliveService : Service() {
             title: String,
             text: String,
             postTime: Long,
-            userId: Int
+            userLabel: String
         ) {
             val i = Intent(ctx, KeepAliveService::class.java)
                 .setAction(ACTION_WECHAT_NOTIFICATION)
                 .putExtra(EXTRA_TITLE, title)
                 .putExtra(EXTRA_TEXT, text)
                 .putExtra(EXTRA_POST_TIME, postTime)
-                .putExtra(EXTRA_USER_ID, userId)
+                .putExtra(EXTRA_USER_LABEL, userLabel)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ctx.startForegroundService(i)
             else ctx.startService(i)
         }

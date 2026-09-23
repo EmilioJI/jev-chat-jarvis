@@ -42,12 +42,20 @@ class WeChatNotificationListenerService : NotificationListenerService() {
             .firstOrNull { it.isNotBlank() }
             .orEmpty()
 
-        val text = sequenceOf(
-            extras.getCharSequence(Notification.EXTRA_BIG_TEXT),
-            extras.getCharSequence(Notification.EXTRA_TEXT)
-        ).mapNotNull { it?.toString()?.trim() }
-            .firstOrNull { it.isNotBlank() }
+        val textLines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)
+            ?.map { it.toString().trim() }
+            ?.filter { it.isNotBlank() }
             .orEmpty()
+        val text = if (textLines.isNotEmpty()) {
+            textLines.joinToString("\n")
+        } else {
+            sequenceOf(
+                extras.getCharSequence(Notification.EXTRA_BIG_TEXT),
+                extras.getCharSequence(Notification.EXTRA_TEXT)
+            ).mapNotNull { it?.toString()?.trim() }
+                .firstOrNull { it.isNotBlank() }
+                .orEmpty()
+        }
 
         if (title.isBlank() && text.isBlank()) return
 

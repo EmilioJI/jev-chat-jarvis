@@ -31,10 +31,9 @@ $Profiles = @(
 )
 
 function Invoke-Adb {
-    param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Args)
-    & adb -s $Serial @Args
+    & adb -s $Serial @args
     if ($LASTEXITCODE -ne 0) {
-        throw "adb failed: $($Args -join ' ')"
+        throw "adb failed: $($args -join ' ')"
     }
 }
 

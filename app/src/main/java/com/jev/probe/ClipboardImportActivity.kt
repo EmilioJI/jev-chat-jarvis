@@ -44,7 +44,8 @@ class ClipboardImportActivity : Activity() {
                     .putExtra(EXTRA_TEXT, text.take(MAX_TEXT_CHARS))
             )
         }
-        finish()
+        finishAndRemoveTask()
+        @Suppress("DEPRECATION")
         overridePendingTransition(0, 0)
     }
 

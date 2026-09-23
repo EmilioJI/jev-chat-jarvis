@@ -167,7 +167,12 @@ class KeepAliveService : Service() {
             messages = messages,
             note = "微信通知上下文 · 时间来自 Android 通知 · $userLabel；未读取微信内部控件"
         )
-        analyzeSnapshot(snapshot, WECHAT_PKG, HistoryCaptureHint.NEWEST_SCREEN, allowAutoCopy = true)
+        analyzeSnapshot(
+            snapshot,
+            wechatScope(userLabel),
+            HistoryCaptureHint.NEWEST_SCREEN,
+            allowAutoCopy = true
+        )
     }
 
     private fun launchClipboardImport() {
@@ -187,8 +192,9 @@ class KeepAliveService : Service() {
         val recentKey = latestKey?.takeIf {
             System.currentTimeMillis() - latestAt <= TITLE_REUSE_MS
         }
-        val title = recentKey?.let { inbox[it]?.lastOrNull()?.title }
-            ?.takeIf { it != "微信消息" }
+        val recentItem = recentKey?.let { inbox[it]?.lastOrNull() }
+        val title = recentItem?.title?.takeIf { it != "微信消息" }
+        val appScope = recentItem?.userLabel?.let { wechatScope(it) } ?: WECHAT_PKG
 
         val now = System.currentTimeMillis()
         val messages = text.lineSequence()
@@ -208,7 +214,7 @@ class KeepAliveService : Service() {
             messages = messages,
             note = "剪贴板文本 · 由你主动复制；未自动判断说话人"
         )
-        analyzeSnapshot(snapshot, WECHAT_PKG, HistoryCaptureHint.CONSERVATIVE)
+        analyzeSnapshot(snapshot, appScope, HistoryCaptureHint.CONSERVATIVE)
     }
 
     private fun analyzeSnapshot(
@@ -302,18 +308,23 @@ class KeepAliveService : Service() {
 
     private fun saveLatestContact() {
         val key = latestKey
-        val title = key?.let { inbox[it]?.lastOrNull()?.title }
+        val latest = key?.let { inbox[it]?.lastOrNull() }
+        val title = latest?.title
         if (title.isNullOrBlank() || title == "微信消息") {
             overlay.toast("当前没有可靠的微信会话名称")
             return
         }
+        val appScope = wechatScope(latest.userLabel)
         worker.execute {
             val msg = runCatching {
-                KbStore.get(this).saveOrMergeContact(title, WECHAT_PKG)
+                KbStore.get(this).saveOrMergeContact(title, appScope)
             }.getOrElse { "保存失败：" + it.javaClass.simpleName }
             mainPost { overlay.toast(msg) }
         }
     }
+
+    private fun wechatScope(userLabel: String): String =
+        WECHAT_PKG + "@" + userLabel.trim().ifBlank { "default" }
 
     private inline fun mainPost(crossinline block: () -> Unit) {
         android.os.Handler(mainLooper).post { block() }

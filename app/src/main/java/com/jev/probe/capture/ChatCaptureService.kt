@@ -645,6 +645,16 @@ open class ChatCaptureService : AccessibilityService() {
             }
         }
         if (raw == null) {
+            val probeStatus = if (pkg == WECHAT_PKG) {
+                runCatching { ManualWeChatVisibleText.probe(root, resources) }
+                    .getOrNull()
+                    ?.let { p ->
+                        "n${p.totalNodes}_t${p.textNodes}_d${p.descNodes}_" +
+                            "e${p.editableNodes}_b${p.bottomLabeledNodes}_c${p.composerSignals}"
+                    }
+            } else {
+                null
+            }
             DiagnosticsStore.record(
                 this,
                 packageName = pkg,
@@ -653,7 +663,7 @@ open class ChatCaptureService : AccessibilityService() {
                 titlePresent = false,
                 messageCount = 0,
                 latestFrom = null,
-                status = "manual_tree_unavailable"
+                status = probeStatus ?: "manual_tree_unavailable"
             )
             overlay?.showCaptureOnly("当前应用没有可用的标准控件读取路径")
             return

@@ -11,6 +11,7 @@ import com.jev.probe.core.RankedReply
  */
 object ReplyHandoff {
     private const val TTL_MS = 10 * 60_000L
+    private const val ARMED_TTL_MS = 60_000L
 
     @Volatile private var updatedAt: Long = 0L
     @Volatile private var replies: List<RankedReply> = emptyList()
@@ -32,7 +33,7 @@ object ReplyHandoff {
     @Synchronized
     fun consumeArmed(now: Long = System.currentTimeMillis()): String? {
         val text = armedText
-        if (text.isNullOrBlank() || armedAt <= 0L || now - armedAt > TTL_MS) {
+        if (text.isNullOrBlank() || armedAt <= 0L || now - armedAt > ARMED_TTL_MS) {
             armedText = null
             armedAt = 0L
             return null

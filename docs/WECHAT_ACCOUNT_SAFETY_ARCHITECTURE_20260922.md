@@ -166,3 +166,142 @@ Google Play 官方参考：
 - [ ] OverlayService 与 AccessibilityService 完全解耦（下一阶段）
 - [ ] 标准 IME 恢复直接输入（下一阶段）
 - [ ] 最新安全架构完成 A/B 真机回归（待本阶段 CI 通过后执行）
+
+
+## 9. 2026-09-23 便捷度恢复实现（已落地）
+
+前一版“纯主动复制/截图”安全架构虽然降低了微信内部依赖，但日常操作成本过高。本轮在**不恢复微信 Node Tree、内部资源 ID、Accessibility 写输入框或自动发送**的前提下，把常用路径重新压缩。
+
+### 9.1 微信通知辅助链
+
+新增标准 Android `NotificationListenerService`：
+
+- 系统授权是设备级“通知访问”，这一点在 UI 中明确披露；
+- 代码入口第一步只接受 `com.tencent.mm`，其他 App 通知立即忽略；
+- 读取 Android 通知提供的会话标题、消息摘要和通知时间；
+- 支持 `EXTRA_TEXT_LINES` 多行摘要；
+- 消息时间作为 `Msg.ts` 结构化字段传递，不污染正文；
+- 最近通知只保存在进程内存；只有用户另外开启“关联上下文”时，实际进入分析的内容才会进入既有知识库历史；
+- 默认是“通知到达 → 悬浮球提示 → 用户点一次才分析”；
+- 用户可显式打开“通知到达即自动分析”。
+
+通知路径不会打开微信，不读取微信 Accessibility Tree，不查找微信控件，不模拟触摸。
+
+### 9.2 Overlay 与 Accessibility 生命周期解耦
+
+悬浮 UI 现在由前台助手服务持有进程级 `OverlayRuntime`：
+
+- 微信核心路径不要求开启 AccessibilityService；
+- 微信 A / B 均使用标准应用悬浮层；
+- AccessibilityService 只作为 QQ / X / 飞书标准适配和可选本地截图能力；
+- OverlayController 在进程内保持单实例，前台助手服务重启不会制造第二套悬浮窗；
+- “重新分析”和“存联系人”回调按当前数据源拥有者隔离，通知源与 Accessibility 源不会相互清错回调；
+- 未启用某项能力时，对应按钮不会显示，避免“按钮可见但实际不可用”。
+
+### 9.3 可选极速模式
+
+两个独立 opt-in：
+
+1. **微信通知到达即自动分析**  
+   使用 Android 通知内容直接运行判断与候选生成。
+
+2. **首选回复生成后自动复制**  
+   仅当 Jev 排序真正成功时，把排名第 1 的候选放进系统剪贴板并收起面板；排序失败时不会把未排序候选冒充“首选”。
+
+组合后典型路径可缩短为：
+
+```text
+微信通知
+  → JEV 自动分析/排序
+  → 首选回复自动复制
+  → 用户打开微信
+  → 粘贴
+  → 用户发送
+```
+
+两个开关都默认关闭。
+
+### 9.4 小书童·快捷填入 IME
+
+新增可选标准 Android `InputMethodService`：
+
+- 候选通过进程内 `ReplyHandoff` 传递，不新建候选回复磁盘数据库；
+- “快捷填入”只把选定回复 arm 到内存，并打开 Android 系统输入法选择器；
+- 用户明确选择“小书童·快捷填入”后，仅调用标准 `InputConnection.commitText()`；
+- 不读取光标前后文字；
+- 不读取选中文本；
+- 不读取用户手工键入内容；
+- 不执行 `performEditorAction`、发送键或任何“发送”动作；
+- 写入后尝试切回上一个输入法；
+- 一次性 armed reply **60 秒过期**，避免用户取消选择器后很久再切换输入法时意外插入旧回复；
+- 候选列表本身在进程内最多保留 10 分钟、最多 3 条。
+
+CI 增加 write-only IME Gate，禁止未来把 IME 扩成文本监控器或发送控制器。
+
+### 9.5 微信 A / B 严格命名空间
+
+通知来源按 Android profile label 构造内部 scope：
+
+```text
+com.tencent.mm@<Android profile>
+```
+
+联系人匹配对该 scope 采用严格规则：
+
+- A 只能命中带 A scope 的联系人；
+- B 只能命中带 B scope 的联系人；
+- 未知 profile 不回退到旧的同名微信联系人；
+- QQ / X / 飞书等普通 App 保留原有兼容 fallback。
+
+因此即使微信 A 和微信 B 都有一个显示名完全相同的“张三”，也不会仅因为同名而共享关系、摘要或历史。
+
+**真机限制：**代码已经能区分 `StatusBarNotification.user` 暴露的 profile，但 vivo 是否会把应用分身通知以独立 user/profile 交给 user-0 的 NotificationListenerService，必须以 V2366HA 真机结果为准。如果 vivo 不透传 B 的通知，微信 B 仍保留悬浮窗 + 剪贴板 + 可选本地 OCR + IME 路径，但“通知一键分析”不能宣称已支持。
+
+### 9.6 当前操作步数
+
+| 模式 | 新消息分析 | 回复进入输入框 | 发送 |
+|---|---|---|---|
+| 默认安全 | 通知到达 → 点悬浮球 | 点候选复制 → 粘贴 | 用户 |
+| 通知一键 | 通知到达 → 点悬浮球即分析 | 点候选复制 → 粘贴 | 用户 |
+| 自动分析 | 通知到达自动分析 | 点候选复制 → 粘贴 | 用户 |
+| 自动分析 + 自动复制 | 通知到达自动分析 | 已自动复制 → 粘贴 | 用户 |
+| 快捷 IME | 上述任一分析方式 | 点“快捷填入” → 系统选择小书童 → 自动 commitText | 用户 |
+
+因此当前产品不再依赖“先手工复制整段聊天才能使用”；剪贴板和本地 OCR仍作为主动 fallback。
+
+## 10. 最终代码 Gate（2026-09-23）
+
+最终运行代码 HEAD：
+
+`258ba1da1b8086baed0b9b24ca426634c1aa573c`
+
+随后 A/B 严格 profile 隔离与共享 Overlay 生命周期修复已继续提交并通过 CI。最终验收 Run：
+
+- Android UI PR Gate **#143**：SUCCESS
+- WeChat safety architecture guard：PASS
+- Unit tests + debug APK：PASS
+- APK metadata：PASS
+- JVM `@Test` 方法：30
+- package：`com.jev.probe.guofeng`
+- label：`小书童·知言`
+- targetSdk：36
+- compileSdk：36
+- Run #143 APK SHA-256：`dbbe36cb7dd3df610649514e56bbdf62e12bc512900188bec1ef9b589811bfa1`
+
+Run #134 首次失败仅为 GitHub-hosted Runner 下载 Gradle 时连接被重置；按带宽策略只重试失败任务一次，第二次完整 PASS，没有通过增加 Runner 或重复 workflow 规避问题。
+
+### 仍待真机 Gate
+
+代码/CI PASS 不等于主力微信长期验收 PASS。仍需在 V2366HA 上验证：
+
+- 微信 A：通知权限 → 悬浮提示 → 一键分析 → 候选；
+- 微信 B：是否能收到独立 profile 的通知回调；
+- A/B 同名联系人实际不会串历史；
+- 可选“通知到达即分析”；
+- 可选“首选自动复制”；
+- 小书童 IME 的系统启用、选择、`commitText`、自动切回原键盘；
+- 两个微信上均无自动发送；
+- 未开 Accessibility 时微信核心功能仍可用；
+- 本地 OCR 在未开 Accessibility 时不显示不可用入口。
+
+在这些真机项通过前，PR 继续保持 Draft。

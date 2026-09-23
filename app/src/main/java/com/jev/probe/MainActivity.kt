@@ -13,7 +13,9 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.NotificationManagerCompat
 import com.jev.probe.core.Prefs
+import com.jev.probe.capture.KeepAliveService
 import com.jev.probe.ui.Guofeng
 import com.jev.probe.ui.InkPaperDrawable
 
@@ -55,6 +57,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (prefs.enabled && Settings.canDrawOverlays(this)) {
+            KeepAliveService.start(this)
+        }
         build()
     }
 
@@ -65,30 +70,39 @@ class MainActivity : AppCompatActivity() {
 
         val a11y = isA11yEnabled()
         val overlay = Settings.canDrawOverlays(this)
+        val notifications = isNotificationAccessEnabled()
         val key = prefs.hasKey()
-        val ready = a11y && overlay && key
+        val ready = overlay && key
 
-        container.addView(readinessCard(ready, a11y, overlay, key))
+        container.addView(readinessCard(ready, notifications, overlay, key))
 
-        container.addView(sectionTitle("启用准备", "三步完成后即可在聊天旁使用"))
-        container.addView(permissionCard(
-            mark = "读",
-            title = "无障碍权限",
-            desc = "用于你主动分析当前可见内容；微信默认不在后台持续读取",
-            granted = a11y
-        ) {
-            showAccessibilityDisclosure()
-        })
+        container.addView(sectionTitle("启用准备", "微信基础模式只需悬浮窗 + 模型；通知权限可把操作降到一键"))
         container.addView(permissionCard(
             mark = "浮",
             title = "悬浮窗权限",
-            desc = "在聊天界面上方显示分析与候选回复",
+            desc = "微信 A / B 共用的常驻入口",
             granted = overlay
         ) {
             startActivity(Intent(
                 Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                 Uri.parse("package:$packageName")
             ))
+        })
+        container.addView(permissionCard(
+            mark = "讯",
+            title = "微信通知访问（推荐）",
+            desc = "新消息到达后自动准备上下文；点一次悬浮球即可分析",
+            granted = notifications
+        ) {
+            showNotificationDisclosure()
+        })
+        container.addView(permissionCard(
+            mark = "读",
+            title = "无障碍权限（可选）",
+            desc = "仅用于 QQ / X / 飞书适配和可选本地截屏，不是微信必需",
+            granted = a11y
+        ) {
+            showAccessibilityDisclosure()
         })
         container.addView(permissionCard(
             mark = "稳",
@@ -117,6 +131,11 @@ class MainActivity : AppCompatActivity() {
         container.addView(masterButton(prefs.enabled).apply {
             setOnClickListener {
                 prefs.enabled = !prefs.enabled
+                if (prefs.enabled && Settings.canDrawOverlays(this@MainActivity)) {
+                    KeepAliveService.start(this@MainActivity)
+                } else if (!prefs.enabled) {
+                    KeepAliveService.stop(this@MainActivity)
+                }
                 build()
             }
         })
@@ -191,7 +210,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun readinessCard(
         ready: Boolean,
-        a11y: Boolean,
+        notifications: Boolean,
         overlay: Boolean,
         key: Boolean
     ): View {
@@ -246,8 +265,8 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setPadding(0, dp(14), 0, 0)
         }
-        statuses.addView(statusToken("无障碍", a11y))
         statuses.addView(statusToken("悬浮窗", overlay))
+        statuses.addView(statusToken("微信通知", notifications))
         statuses.addView(statusToken("密钥", key))
         c.addView(statuses)
 
@@ -466,6 +485,25 @@ class MainActivity : AppCompatActivity() {
         textSize = size
         setTextColor(color)
         typeface = if (serif) Guofeng.serif(bold) else Guofeng.sans(bold)
+    }
+
+    private fun isNotificationAccessEnabled(): Boolean =
+        NotificationManagerCompat.getEnabledListenerPackages(this).contains(packageName)
+
+    private fun showNotificationDisclosure() {
+        AlertDialog.Builder(this)
+            .setTitle("微信通知访问")
+            .setMessage(
+                "这是当前推荐的低风险便捷模式。开启后，小书童只接收 Android 系统已经展示给你的微信通知标题、消息摘要和通知时间，" +
+                    "不会打开微信、不会读取微信内部控件、不会模拟点击。\n\n" +
+                    "新消息到达后，悬浮球会提示“已就绪”；默认不会自动把内容发给模型，点悬浮球后才分析。" +
+                    "你也可以在设置中显式开启“通知到达即分析”。"
+            )
+            .setNegativeButton("暂不开启", null)
+            .setPositiveButton("前往系统设置") { _, _ ->
+                startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+            }
+            .show()
     }
 
     /**

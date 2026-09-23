@@ -342,9 +342,10 @@ Run #134 首次失败仅为 GitHub-hosted Runner 下载 Gradle 时连接被重�
 - 微信 A 明确处于前台；
 - OCR source 为 `ocr_local`；
 - 结果 `status=empty`、`message_count=0`；
-- 同期系统 `screencap` 的微信内容区也表现为空/黑屏。
+- 同期系统 `screencap` 的微信内容区也表现为空/黑屏；
+- `dumpsys window` 已确认主微信 `LauncherUI` 的 Window flags 包含 `SECURE`；微信 B（user 999）的 `LauncherUI` 同样包含 `SECURE`。
 
-因此本地 OCR 可以继续作为其他 App 的可选能力，但当前微信版本上不能宣称它是可靠 fallback。
+因此黑屏不是 OCR 模型问题，而是微信窗口主动使用 Android secure-window 保护。Accessibility screenshot、系统 screencap 以及 MediaProjection 都不能作为当前微信聊天正文的可靠采集方案；本地 OCR 继续保留给其他 App，但不再作为微信能力承诺。
 
 ### 11.3 已撤销的诊断配置
 
